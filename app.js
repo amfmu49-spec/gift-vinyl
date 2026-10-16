@@ -145,33 +145,28 @@
     currentLyricIndex: -1,
     currentCollectionIndex: 0,
     currentTrackInfo: {
-      id: 'demo-track',
-      title: 'Chasing The Eclipse',
+      id: 'initial-namida-bucket',
+      title: '涙を集めるバケツ',
       artist: '見知らぬ誰かからの贈り物',
-      coverUrl: 'assets/default_cover.jpg',
-      sourceType: 'demo',
+      coverUrl: 'assets/covers/cover_4.jpg',
+      sourceType: 'gift',
+      audioUrl: 'https://amugift.b-cdn.net/tracks/namida_bucket.mp3',
+      localAudioUrl: 'assets/namida_bucket.mp3',
       file: null,
       lyrics: null,
     },
     // 一度再生したレコードのコレクション（棚に飾られる）
     collection: [
       {
-        id: 'demo-track',
-        title: 'Chasing The Eclipse',
+        id: 'initial-namida-bucket',
+        title: '涙を集めるバケツ',
         artist: '見知らぬ誰かからの贈り物',
-        coverUrl: 'assets/default_cover.jpg',
-        sourceType: 'demo',
+        coverUrl: 'assets/covers/cover_4.jpg',
+        sourceType: 'gift',
+        audioUrl: 'https://amugift.b-cdn.net/tracks/namida_bucket.mp3',
+        localAudioUrl: 'assets/namida_bucket.mp3',
         file: null,
-        durationStr: '01:45',
-      },
-      {
-        id: 'preset-midnight',
-        title: 'Midnight Coffee & Vinyl',
-        artist: '見知らぬ誰かからの贈り物',
-        coverUrl: 'assets/user_walnut.jpg', // ウォルナット木目スリーブ
-        sourceType: 'demo',
-        file: null,
-        durationStr: '02:30',
+        durationStr: '03:56',
       }
     ],
   };
@@ -2177,17 +2172,20 @@
     updateGalleryCount();
     renderShelfGallery();
 
-    // スマホ対応: オフラインWAVレンダリングを行いaudioElementにプリロード
-    renderDemoWav((blobUrl) => {
-      if (state.audioSourceType === 'demo') {
-        audioElement.src = blobUrl;
-        audioElement.loop = true;
-        audioElement.onloadedmetadata = () => {
-          state.duration = audioElement.duration || 92;
-          updateTimeDisplay();
-        };
-      }
-    });
+    // 初期曲「涙を集めるバケツ」をプリロード (Bunny CDN & ローカルフォールバック)
+    const initialUrl = state.currentTrackInfo.audioUrl || state.currentTrackInfo.localAudioUrl;
+    audioElement.src = initialUrl;
+    audioElement.loop = true;
+    audioElement.onerror = () => {
+      console.warn('CDN fetch failed, falling back to local assets/namida_bucket.mp3');
+      audioElement.src = state.currentTrackInfo.localAudioUrl || 'assets/namida_bucket.mp3';
+    };
+    audioElement.onloadedmetadata = () => {
+      state.duration = audioElement.duration || 236;
+      updateTimeDisplay();
+    };
+    applyCoverArtwork(state.currentTrackInfo.coverUrl);
+    updateCommentGiftButton();
   }
 
   window.addEventListener('DOMContentLoaded', init);
