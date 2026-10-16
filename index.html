@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GIFT - Analog Record Player</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- ウォルナット木目＆間接照明の背景構造 -->
+  <div class="walnut-room-wall"></div>
+  <div class="warm-cove-light-top"></div>
+  <div class="warm-cove-light-ambient"></div>
+  <div class="ambient-backdrop" id="ambientBackdrop"></div>
+  <div class="ambient-noise-overlay"></div>
+
+  <!-- 16:9 シネマティックラッパー -->
+  <main class="cinema-aspect-ratio-box" id="cinemaBox">
+    <div class="player-container" id="playerContainer">
+      
+      <!-- ヘッダーバー (16:9 内部) -->
+      <header class="player-header">
+        <div class="brand-badge">
+          <span class="brand-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M12 2a10 10 0 0 1 10 10"/>
+            </svg>
+          </span>
+          <span class="brand-name">GIFT</span>
+        </div>
+
+        <!-- ビュー切替タブ (PLAYER / GALLERY) -->
+        <nav class="view-tabs">
+          <button class="tab-btn active" id="tabPlayer" title="ターンテーブル再生画面">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+            <span>PLAYER</span>
+          </button>
+          <button class="tab-btn" id="tabGallery" title="誰かから届いたレコードの飾り棚">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 3h18v18H3z"/>
+              <path d="M3 9h18M3 15h18M9 3v18"/>
+            </svg>
+            <span>SHELF GALLERY</span>
+            <span class="badge-count" id="galleryCount">2</span>
+          </button>
+        </nav>
+
+        <div class="header-actions">
+          <!-- GIFTするボタン (1日2曲まで) -->
+          <button class="btn-gift-main" id="btnOpenGiftModal" title="曲をGIFTする（1日2曲まで）">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="20 12 20 22 4 22 4 12"/>
+              <rect x="2" y="7" width="20" height="5"/>
+              <line x1="12" y1="22" x2="12" y2="7"/>
+              <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/>
+              <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>
+            </svg>
+            <span>GIFTする</span>
+            <span class="gift-limit-badge" id="giftQuotaBadge">残り 2/2</span>
+          </button>
+
+          <!-- 届いた手紙（通知）アイコン -->
+          <button class="btn-icon" id="btnLetterNotifications" title="GIFTの届き通知">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+              <polyline points="22,6 12,13 2,6"/>
+            </svg>
+            <span class="noti-badge-dot" id="notiDot" style="display:none;"></span>
+          </button>
+
+          <!-- Google ログイン / ユーザー情報 -->
+          <div class="user-auth-area" id="authArea">
+            <button class="btn-google-login" id="btnGoogleLogin" title="Googleアカウントで登録・ログイン">
+              <svg viewBox="0 0 24 24" width="14" height="14">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+              </svg>
+              <span>Google 登録</span>
+            </button>
+            <div class="user-logged-profile" id="userProfile" style="display:none;">
+              <img id="userAvatar" src="" alt="Avatar" class="user-avatar-img">
+              <span id="userName" class="user-display-name">User</span>
+              <button class="btn-logout" id="btnLogout" title="ログアウト">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <button class="btn-icon" id="btnToggleNoise" title="レコード特有のクラックルノイズ ON/OFF">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M2 10v4M6 6v12M10 3v18M14 8v8M18 5v14M22 10v4"/>
+            </svg>
+          </button>
+
+          <button class="btn-icon" id="btnFullscreen" title="全画面表示切替">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- メインコンテンツ (左: カバー＆歌詞 / 右: 回転レコード) -->
+      <div class="player-stage" id="stagePlayer">
+        
+        <!-- ======================= LEFT: COVER & LYRICS ======================= -->
+        <section class="left-section" id="leftSection">
+          <!-- カバーアートラッパー (スリーブ質感) -->
+          <div class="album-sleeve-container" id="albumSleeve">
+            <div class="sleeve-card">
+              <img id="coverArtImg" src="assets/default_cover.jpg" alt="Album Cover" class="cover-image">
+              <div class="sleeve-sheen"></div>
+              <div class="sleeve-vignette"></div>
+
+              <!-- カバーアートの上に浮かび上がるハイフィディリティ歌詞レイヤー -->
+              <div class="lyrics-glass-overlay" id="lyricsOverlay">
+                <div class="lyrics-header">
+                  <span class="lyrics-label">LYRICS</span>
+                  <div class="lyrics-indicator">
+                    <span class="pulse-dot"></span>
+                    <span class="sync-status" id="lyricsSyncStatus">SYNCED</span>
+                  </div>
+                </div>
+                
+                <div class="lyrics-scroller" id="lyricsContainer">
+                  <!-- 歌詞行がJavaScriptで動的描画される -->
+                </div>
+              </div>
+            </div>
+
+            <!-- ドロップゾーン案内（ドラッグ中表示） -->
+            <div class="drop-zone-overlay" id="dropZone">
+              <div class="drop-zone-content">
+                <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path d="M12 3v12m0 0 5-5m-5 5-5-5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
+                </svg>
+                <p>MP3 / WAV / 画像 / .LRC をここにドロップ</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- 楽曲情報メタデータ -->
+          <div class="track-meta">
+            <div class="track-info">
+              <h1 class="track-title" id="trackTitle">Chasing The Eclipse</h1>
+              <p class="track-artist" id="trackArtist">見知らぬ誰かからの贈り物</p>
+            </div>
+            <div class="track-meta-actions">
+              <button class="btn-comment-gift" id="btnOpenCommentModal" title="この曲に感想をGIFTして次の曲を受け取る">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+                <span>感想をGIFT (次の曲へ)</span>
+              </button>
+              <div class="track-mode-badge" id="sourceBadge">GIFT VINYL</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ======================= RIGHT: TURNTABLE & VINYL ======================= -->
+        <section class="right-section" id="rightSection">
+          <div class="turntable-chassis">
+            
+            <!-- メタリックヘアライン台座テクスチャ -->
+            <div class="chassis-surface"></div>
+            
+            <!-- コーナーインジケーター / ロゴ -->
+            <div class="chassis-branding">
+              <span class="turntable-model">DIRECT DRIVE TURNTABLE GIFT-1690</span>
+              <div class="strobe-light" id="strobeLight"></div>
+            </div>
+
+            <!-- プラッター＆レコード盤ラッパー -->
+            <div class="platter-well">
+              <!-- プラッター外周のストロボドットリム -->
+              <div class="platter-rim" id="platterRim"></div>
+
+              <!-- ビジュアル音波反応グローリング (Web Audio API) -->
+              <div class="audio-visual-halo" id="visualHalo"></div>
+
+              <!-- 回転するレコード盤 (Vinyl Disc) -->
+              <div class="vinyl-disc" id="vinylDisc">
+                <!-- レコードの溝（グルーヴ）テクスチャ -->
+                <div class="vinyl-grooves"></div>
+                <!-- 角度依存の動的ライトリフレクション -->
+                <div class="vinyl-reflection angle-1"></div>
+                <div class="vinyl-reflection angle-2"></div>
+                <!-- 外周ランイン溝・内周ランアウト溝 -->
+                <div class="vinyl-lead-in"></div>
+                <div class="vinyl-lead-out"></div>
+
+                <!-- センターレーベル（カバーアートが回転） -->
+                <div class="center-label">
+                  <img id="labelCoverImg" src="assets/default_cover.jpg" alt="Center Label" class="label-image">
+                  <div class="label-ring"></div>
+                  <div class="center-spindle-hole"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- トーンアーム機構 (Tonearm assembly) -->
+            <div class="tonearm-assembly" id="tonearmAssembly">
+              <!-- ピボットベース（回転軸） -->
+              <div class="tonearm-pivot-base">
+                <div class="counterweight"></div>
+                <div class="pivot-bearing"></div>
+                <div class="antiskating-dial"></div>
+                <div class="cueing-lever" id="cueingLever"></div>
+              </div>
+
+              <!-- 動くアーム本体 (Rest位置 〜 レコード外周 〜 内周) -->
+              <div class="tonearm-wand" id="tonearmWand">
+                <div class="wand-arm-rod"></div>
+                <div class="wand-gimbal"></div>
+                <!-- ヘッドシェル & カートリッジ & 針 -->
+                <div class="cartridge-headshell">
+                  <div class="headshell-body"></div>
+                  <div class="stylus-needle" id="stylusNeedle"></div>
+                  <div class="stylus-led"></div>
+                </div>
+              </div>
+
+              <!-- アームレスト（静止時の受け台） -->
+              <div class="tonearm-rest"></div>
+            </div>
+
+            <!-- ターンテーブルコントロール (33/45 RPM, Start/Stop) -->
+            <div class="turntable-controls">
+              <div class="rpm-selector">
+                <button class="rpm-btn active" id="btnRpm33" data-rpm="33">33</button>
+                <button class="rpm-btn" id="btnRpm45" data-rpm="45">45</button>
+                <span class="rpm-label">RPM</span>
+              </div>
+
+              <div class="pitch-slider-wrapper">
+                <span class="pitch-label">PITCH</span>
+                <input type="range" class="pitch-slider" id="pitchSlider" min="0.8" max="1.2" step="0.01" value="1.0">
+                <span class="pitch-val" id="pitchValue">±0%</span>
+              </div>
+
+              <button class="turntable-power-btn" id="turntablePowerBtn" title="ターンテーブル Start/Stop">
+                <span class="power-lamp" id="powerLamp"></span>
+                <span class="power-text">START / STOP</span>
+              </button>
+            </div>
+
+          </div>
+        </section>
+
+      </div>
+
+      <!-- ======================= GALLERY MODE: VINYL SHELF ======================= -->
+      <div class="gallery-stage" id="stageGallery" style="display: none;">
+        <div class="shelf-header">
+          <div class="shelf-title-group">
+            <h2>VINYL COLLECTION SHELF</h2>
+            <p>再生したレコードが木製の飾り棚に並びます。ジャケットをクリックしてターンテーブルにセットできます。</p>
+          </div>
+          <button class="btn-action-pill" id="btnClearHistory" title="棚を整理する">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+            <span>棚をリセット</span>
+          </button>
+        </div>
+
+        <!-- 飾り棚本体 (ウォルナット木目の立体シェルフ) -->
+        <div class="shelf-viewport">
+          <div class="shelf-spotlight-row" id="shelfSpotlights"></div>
+          
+          <div class="shelf-row top-shelf">
+            <div class="records-rack" id="shelfRecordsGrid">
+              <!-- JavaScriptで再生済みレコードが動的に並ぶ -->
+            </div>
+            <!-- 木製の棚板（ウォルナット） -->
+            <div class="walnut-shelf-board">
+              <div class="shelf-ledge"></div>
+              <div class="shelf-front-face"></div>
+              <div class="shelf-under-shadow"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ======================= BOTTOM: PLAYBACK BAR ======================= -->
+      <footer class="player-bottom-bar">
+        
+        <!-- 再生/一時停止、トラック操作 -->
+        <div class="ctrl-group main-controls">
+          <button class="ctrl-btn" id="btnPrev" title="前のトラック / 最初に戻る">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+              <path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/>
+            </svg>
+          </button>
+
+          <button class="ctrl-btn play-master-btn" id="btnPlayPause" title="再生 / 一時停止">
+            <svg id="iconPlay" viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+              <path d="M8 5v14l11-7z"/>
+            </svg>
+            <svg id="iconPause" viewBox="0 0 24 24" width="22" height="22" fill="currentColor" style="display:none;">
+              <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+            </svg>
+          </button>
+
+          <button class="ctrl-btn" id="btnNext" title="次のデモ曲 / シャッフル">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+              <path d="m6 18 8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- シークバー＆タイム表示 -->
+        <div class="ctrl-group progress-container">
+          <span class="time-display" id="currentTime">00:00</span>
+          <div class="progress-bar-track" id="progressTrack">
+            <div class="progress-bar-fill" id="progressFill"></div>
+            <div class="progress-bar-glow"></div>
+            <div class="progress-bar-thumb" id="progressThumb"></div>
+          </div>
+          <span class="time-display" id="durationTime">00:00</span>
+        </div>
+
+        <!-- 音量＆エフェクトコントロール -->
+        <div class="ctrl-group volume-group">
+          <button class="ctrl-btn" id="btnMute" title="ミュート切替">
+            <svg id="iconVolumeHigh" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+              <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+            </svg>
+          </button>
+          <div class="volume-slider-track" id="volumeTrack">
+            <input type="range" class="volume-slider" id="volumeSlider" min="0" max="1" step="0.01" value="0.85">
+            <div class="volume-fill" id="volumeFill" style="width: 85%;"></div>
+          </div>
+          <div class="crackle-indicator" id="crackleBadge" title="レコード特有のクラックルノイズ">
+            <span class="crackle-dot"></span>
+            <span>VINYL NOISE</span>
+          </div>
+        </div>
+
+      </footer>
+
+    </div>
+  </main>
+
+  <!-- 歌詞設定 / 手動入力・LRCファイルインポートモーダル -->
+  <div class="modal-backdrop" id="lyricsModal" style="display:none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h3>歌詞設定 (LRC / テキスト)</h3>
+          <p>タイムタグ付き [.lrc] 形式、またはプレーンテキストの歌詞を設定できます</p>
+        </div>
+        <button class="modal-close" id="btnCloseLyricsModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="lrc-file-picker">
+          <label class="btn-action-pill" for="lrcFileInput">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+            </svg>
+            <span>.lrc ファイルを読み込む</span>
+          </label>
+          <input type="file" id="lrcFileInput" accept=".lrc,.txt" style="display:none;">
+          <span class="file-picked-name" id="lrcFileName">ファイル未選択</span>
+        </div>
+        <textarea class="lyrics-textarea" id="lyricsTextarea" placeholder="[00:12.00] 歌詞を入力またはLRCファイルをペースト..."></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="btnResetLyrics">デモ歌詞に戻す</button>
+        <button class="btn-primary" id="btnApplyLyrics">歌詞を反映する</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== GIFT STUDIO MODAL (音楽を誰かに届ける) ==================== -->
+  <div class="modal-backdrop" id="giftModal" style="display:none;">
+    <div class="modal-card gift-modal-card">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <div class="gift-badge-header">🎁 GIFT STUDIO</div>
+          <h3>あなたの音楽を、見知らぬ誰かへ届ける</h3>
+          <p>1日2曲まで。あなたが1曲GIFTすると、世界の誰かの1曲があなたにGIFTされます。</p>
+        </div>
+        <button class="modal-close" id="btnCloseGiftModal">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- 残り回数インジケーター -->
+        <div class="gift-quota-banner">
+          <div class="quota-text">
+            <span>本日のGIFT可能回数</span>
+            <strong id="modalQuotaText">残り 2 / 2 曲</strong>
+          </div>
+          <div class="quota-pill-dots">
+            <span class="quota-dot active" id="quotaDot1"></span>
+            <span class="quota-dot active" id="quotaDot2"></span>
+          </div>
+        </div>
+
+        <!-- 音声ファイル選択 -->
+        <div class="gift-form-group">
+          <label class="gift-label">
+            <span>音声ファイル (MP3 / WAV) <span class="req">*必須</span></span>
+          </label>
+          <div class="gift-drop-box" id="giftDropBox">
+            <input type="file" id="giftAudioInput" accept="audio/mp3,audio/wav,audio/ogg,audio/flac,audio/*" style="display:none;">
+            <input type="file" id="audioFileInput" accept="audio/*,.mp3,.wav" style="display:none;">
+            <div class="drop-icon-box">
+              <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M9 18V5l12-2v13"/>
+                <circle cx="6" cy="18" r="3"/>
+                <circle cx="18" cy="16" r="3"/>
+              </svg>
+            </div>
+            <p class="drop-primary-text" id="giftAudioFileName">クリックまたはファイルをドラッグ＆ドロップ</p>
+            <p class="drop-sub-text">MP3, WAV 対応 (最大50MB)</p>
+          </div>
+          <button type="button" class="btn-demo-sound-gift" id="btnUseDemoAudioGift">🎵 サンプル音源をセットして試す</button>
+        </div>
+
+        <!-- 曲のタイトル (任意) ※アーティスト名入力欄は一切ありません -->
+        <div class="gift-form-group">
+          <label class="gift-label" for="giftTitleInput">
+            <span>曲のタイトル <span class="opt">（任意・空欄でもOK）</span></span>
+          </label>
+          <input type="text" class="gift-text-input" id="giftTitleInput" placeholder="無題の贈り物、または曲名を入力...">
+          <div class="gift-field-note">※「誰の曲か」という先入観を外すため、アーティスト名は入力しません。純粋な音だけが届きます。</div>
+        </div>
+
+        <!-- カバーアートについての案内 -->
+        <div class="gift-cover-info-card">
+          <div class="info-icon">🎨</div>
+          <div class="info-text">
+            <strong>カバーアートは自動ランダム適用</strong>
+            <p>あらかじめ用意されたエモーショナルなアートワークから、運命の1枚がレコードに刻印されます。</p>
+          </div>
+        </div>
+
+        <!-- 歌詞 (任意) -->
+        <div class="gift-form-group">
+          <label class="gift-label" for="giftLyricsInput">
+            <span>歌詞 (LRC形式 または テキスト) <span class="opt">（任意）</span></span>
+          </label>
+          <textarea class="gift-textarea" id="giftLyricsInput" placeholder="[00:15.00] 歌詞がある場合はここに入力...（歌詞なしの場合はジャケットのみが表示されます）"></textarea>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-secondary" id="btnCancelGift">キャンセル</button>
+        <button class="btn-gift-submit" id="btnSubmitGift">
+          <span>🎁 この曲をGIFTする</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== GOOGLE ログインモーダル ==================== -->
+  <div class="modal-backdrop" id="googleAuthModal" style="display:none;">
+    <div class="modal-card google-modal-card">
+      <div class="google-modal-header">
+        <svg viewBox="0 0 24 24" width="28" height="28">
+          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+        </svg>
+        <h3>Google で GIFT に登録</h3>
+        <p>1日2曲のGIFTと、届いた音楽の記録を管理します</p>
+      </div>
+
+      <div class="google-account-list">
+        <div class="google-account-item" id="btnSelectGoogleAccount">
+          <div class="google-user-icon">
+            <span>A</span>
+          </div>
+          <div class="google-user-info">
+            <strong id="mockUserName">Amu Listener</strong>
+            <span>amu.listener@gmail.com</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="google-modal-footer">
+        <p class="google-privacy-note">GIFT では数字やランキングはありません。曲を持たないリスナーも温かい「感想のGIFT」を届けることで、世界から次の音楽を受け取ることができます。</p>
+        <button class="btn-secondary" id="btnCloseGoogleModal">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== GIFT交換アニメーション演出 (風船で空へ飛ばす) ==================== -->
+  <div class="exchange-cinematic-overlay" id="exchangeOverlay" style="display:none;">
+    <div class="exchange-content">
+      <div class="exchange-balloon-stage">
+        <div class="exchange-balloon-cluster">
+          <span class="balloon-letter-icon">🎈</span>
+          <span class="balloon-sub-note">✉️</span>
+        </div>
+        <div class="balloon-drift-sparkles">✨</div>
+      </div>
+      <h2 class="exchange-title" id="exchangeTitle">あなたの音楽を風船に結んで、空へ放ちました...</h2>
+      <p class="exchange-desc" id="exchangeDesc">風に乗って、遠い誰かの街へ旅立っていきます</p>
+      <div class="exchange-record-anim">
+        <div class="incoming-vinyl-spin"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== コメントGIFTモーダル (感想を贈って次の曲を受け取る) ==================== -->
+  <div class="modal-backdrop" id="commentGiftModal" style="display:none;">
+    <div class="modal-card comment-modal-card">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <div class="gift-badge-header">LETTER OF APPRECIATION</div>
+          <h3>言葉のGIFTを届ける</h3>
+          <p>この曲の作者へ感想を贈りましょう。あなたの言葉が届くと、世界の誰かから次の音楽がGIFTされます。</p>
+        </div>
+        <button class="modal-close" id="btnCloseCommentModal">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="current-listening-card">
+          <img id="commentModalCover" src="assets/default_cover.jpg" alt="Cover" class="comment-modal-cover">
+          <div class="comment-modal-meta">
+            <span class="comment-track-label">NOW PLAYING</span>
+            <strong id="commentModalTitle">Chasing The Eclipse</strong>
+            <span id="commentModalArtist">見知らぬ誰かからの贈り物</span>
+          </div>
+        </div>
+
+        <div class="gift-form-group">
+          <label class="gift-label" for="commentTextInput">
+            <span>作者へ届ける感想・メッセージ <span class="req">*必須</span></span>
+          </label>
+          <textarea class="gift-textarea" id="commentTextInput" placeholder="例：優しい音色で心が温まりました。夜にゆっくり聴きたい名曲です...（数字や評価のない、心温まる言葉のGIFTです）"></textarea>
+          <div class="gift-field-note">※「いいね」や点数はありません。あなたの素直な一言が作者の励みとなり、世界の次の1曲へと繋がります。</div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-secondary" id="btnCancelComment">閉じる</button>
+        <button class="btn-gift-submit" id="btnSubmitComment">
+          <span>💌 感想をGIFTして、次の曲を受け取る</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 届いた手紙モーダル ==================== -->
+  <div class="modal-backdrop" id="letterModal" style="display:none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h3>届いた手紙 ＆ GIFT履歴</h3>
+          <p>あなたの音楽が誰かの元へ届いた記録です</p>
+        </div>
+        <button class="modal-close" id="btnCloseLetterModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="letters-list" id="lettersList">
+          <!-- 動的描画 -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="btnCloseLetterModalBtn">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 優しい通知トースト (風船が届いたお知らせ) ==================== -->
+  <div class="gentle-toast-container" id="gentleToast" style="display:none;">
+    <div class="gentle-toast-card">
+      <div class="toast-balloon">🎈</div>
+      <div class="toast-body">
+        <strong>風船に乗った音楽が誰かに届きました</strong>
+        <p id="toastMessage">空を旅したあなたの音楽が、どこかの街で針を落とされました。</p>
+      </div>
+      <button class="toast-close" id="btnCloseToast">&times;</button>
+    </div>
+  </div>
+
+  <!-- Firebase SDK (v10 compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+  <script src="app.js"></script>
+</body>
+</html>
