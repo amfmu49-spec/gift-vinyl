@@ -1661,17 +1661,54 @@
   }
 
   function updateGiftQuotaBadge() {
-    if (!els.giftQuotaBadge) return;
     const count = getDailyGiftCount();
     const remaining = Math.max(0, 2 - count);
-    if (remaining > 0) {
-      els.giftQuotaBadge.textContent = `残り ${remaining}/2`;
-      els.giftQuotaBadge.style.color = '#e6c875';
-      els.giftQuotaBadge.style.background = 'rgba(212, 168, 83, 0.2)';
-    } else {
-      els.giftQuotaBadge.textContent = '本日終了 (0/2)';
-      els.giftQuotaBadge.style.color = '#888';
-      els.giftQuotaBadge.style.background = 'rgba(255, 255, 255, 0.08)';
+
+    // 1. ヘッダーのメインGIFTボタンバッジ
+    if (els.giftQuotaBadge) {
+      if (remaining > 0) {
+        els.giftQuotaBadge.textContent = `残り ${remaining}/2`;
+        els.giftQuotaBadge.style.color = '#e6c875';
+        els.giftQuotaBadge.style.background = 'rgba(212, 168, 83, 0.2)';
+      } else {
+        els.giftQuotaBadge.textContent = '本日終了 (0/2)';
+        els.giftQuotaBadge.style.color = '#888';
+        els.giftQuotaBadge.style.background = 'rgba(255, 255, 255, 0.08)';
+      }
+    }
+
+    // 2. 投稿モーダル内の残数テキスト反映
+    const modalQuotaText = document.getElementById('modalQuotaText');
+    if (modalQuotaText) {
+      if (remaining > 0) {
+        modalQuotaText.textContent = `残り ${remaining} / 2 曲`;
+        modalQuotaText.style.color = 'var(--accent-gold)';
+      } else {
+        modalQuotaText.textContent = '本日終了 (0 / 2 曲)';
+        modalQuotaText.style.color = '#94a3b8';
+      }
+    }
+
+    // 3. モーダル内のドットインジケーター反映
+    const quotaDot1 = document.getElementById('quotaDot1');
+    const quotaDot2 = document.getElementById('quotaDot2');
+    if (quotaDot1) quotaDot1.classList.toggle('active', remaining >= 1);
+    if (quotaDot2) quotaDot2.classList.toggle('active', remaining >= 2);
+
+    // 4. 音源送信ボタンの状態制御
+    if (els.btnSubmitGift) {
+      const span = els.btnSubmitGift.querySelector('span');
+      if (remaining <= 0) {
+        els.btnSubmitGift.disabled = true;
+        els.btnSubmitGift.style.opacity = '0.55';
+        els.btnSubmitGift.style.cursor = 'not-allowed';
+        if (span) span.textContent = '本日終了（音源GIFTは1日2曲まで）';
+      } else {
+        els.btnSubmitGift.disabled = false;
+        els.btnSubmitGift.style.opacity = '1';
+        els.btnSubmitGift.style.cursor = 'pointer';
+        if (span) span.textContent = '🎁 この曲をGIFTする';
+      }
     }
   }
 
@@ -2178,11 +2215,8 @@
           return;
         }
 
-        // 1日2曲の上限チェック
-        if (getDailyGiftCount() >= 2) {
-          alert('本日のGIFT上限（1日2曲まで）に達しました。明日また誰かへ届けてください。');
-          return;
-        }
+        // 開く直前に必ず残数表示を最新化
+        updateGiftQuotaBadge();
 
         if (els.giftModal) els.giftModal.style.display = 'flex';
       });
@@ -2263,6 +2297,11 @@
     // 5. GIFT送信 (1対1交換 & ランダムカバー自動適用 & Bunny CDNアップロード)
     if (els.btnSubmitGift) {
       els.btnSubmitGift.addEventListener('click', async () => {
+        if (getDailyGiftCount() >= 2) {
+          alert('本日の音源GIFT上限（1日2曲まで）に達しています。明日また誰かへ届けてください。（コメントでのGIFTは引き続きご利用いただけます 🎈）');
+          return;
+        }
+
         const file = els.giftAudioInput && els.giftAudioInput.files && els.giftAudioInput.files[0];
         if (!file) {
           alert('GIFTする音楽ファイル（MP3またはWAV）を選択してください。');
