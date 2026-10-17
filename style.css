@@ -1538,6 +1538,43 @@ body {
   justify-content: flex-start;
 }
 
+/* 空の棚プレースホルダー */
+.shelf-empty-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 36px 20px 24px 20px;
+  text-align: center;
+  animation: fadeInStage 0.4s ease;
+}
+
+.empty-balloon-icon {
+  font-size: 2.8rem;
+  margin-bottom: 12px;
+  animation: floatBalloon 3s ease-in-out infinite;
+}
+
+@keyframes floatBalloon {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+.empty-shelf-title {
+  font-family: 'Space Grotesk', 'Zen Kaku Gothic New', sans-serif;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #f8fafc;
+  margin-bottom: 8px;
+}
+
+.empty-shelf-desc {
+  font-size: 0.82rem;
+  line-height: 1.7;
+  color: var(--text-muted);
+}
+
 /* 各レコードアイテム */
 .shelf-record-card {
   position: relative;

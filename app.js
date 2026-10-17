@@ -188,37 +188,15 @@
     pitch: 1.0,
     crackleEnabled: true,
     currentTime: 0,
-    duration: 92, // デモ曲の長さ(秒)
-    audioSourceType: 'demo', // 'demo' or 'gift' or 'file'
+    duration: 0,
+    audioSourceType: 'gift', // 'gift' or 'file'
     audioUrl: null,
     lyrics: [],
     currentLyricIndex: -1,
-    currentCollectionIndex: 0,
-    currentTrackInfo: {
-      id: 'demo-track',
-      title: 'Chasing The Eclipse',
-      artist: '見知らぬ誰かからの贈り物',
-      coverUrl: 'assets/default_cover.jpg',
-      sourceType: 'demo',
-      file: null,
-      lyrics: DEMO_LYRICS_LRC,
-      duration: 92,
-      durationStr: '01:32',
-    },
-    // 一度再生したレコードのコレクション（棚に飾られる）
-    collection: [
-      {
-        id: 'demo-track',
-        title: 'Chasing The Eclipse',
-        artist: '見知らぬ誰かからの贈り物',
-        coverUrl: 'assets/default_cover.jpg',
-        sourceType: 'demo',
-        file: null,
-        durationStr: '01:32',
-        duration: 92,
-        lyrics: DEMO_LYRICS_LRC,
-      }
-    ],
+    currentCollectionIndex: -1,
+    currentTrackInfo: null,
+    // 届いたレコードのコレクション（棚に飾られる・デモ曲は含まない）
+    collection: [],
   };
 
   // --- Audio Context & Nodes ---
@@ -732,6 +710,18 @@
   // 5. 再生 / 一時停止 コントロール
   // ==========================================================================
   function togglePlayPause() {
+    if (!state.currentTrackInfo && state.collection.length === 0) {
+      showGentleToast(
+        'レコードが置かれていません 🎈',
+        '上の「GIFTする」ボタンから曲を贈ると、世界の誰かから新しいレコードが届きます。'
+      );
+      return;
+    }
+    if (!state.currentTrackInfo && state.collection.length > 0) {
+      playCollectionItem(0);
+      return;
+    }
+
     initAudioContext();
     if (audioCtx && audioCtx.state === 'suspended') {
       audioCtx.resume();
@@ -745,6 +735,7 @@
   }
 
   function startPlayback() {
+    if (!state.currentTrackInfo) return;
     initAudioContext();
     if (audioCtx && audioCtx.state === 'suspended') {
       audioCtx.resume();
@@ -756,13 +747,6 @@
 
     startTurntableVisuals();
 
-    if (state.audioSourceType === 'demo') {
-      if ((!audioElement.src || audioElement.src === '' || !audioElement.src.startsWith('blob:')) && demoAudioBlobUrl) {
-        audioElement.src = demoAudioBlobUrl;
-        audioElement.loop = true;
-      }
-    }
-
     // HTML5 Audio 再生（iOS/Android スマホでマナーモードでも鳴る標準パイプライン）
     if (audioElement && audioElement.src) {
       const playPromise = audioElement.play();
@@ -772,6 +756,9 @@
         });
       }
     }
+
+    // 再生イベントを記録＆送信者への通知をトリガー！
+    recordTrackPlayback(state.currentTrackInfo);
   }
 
   function pausePlayback() {
@@ -968,12 +955,30 @@
   // ==========================================================================
   // 8. ギャラリー＆コレクション（棚に飾る機能）
   // ==========================================================================
+  function loadCollection() {
+    try {
+      const data = localStorage.getItem('amu_collection');
+      if (data) {
+        const arr = JSON.parse(data);
+        return arr.filter(item => item && item.id !== 'demo-track' && item.title !== 'Chasing The Eclipse');
+      }
+    } catch (e) {}
+    return [];
+  }
+
+  function saveCollection() {
+    try {
+      localStorage.setItem('amu_collection', JSON.stringify(state.collection));
+    } catch (e) {}
+  }
+
   function addToCollection(item) {
     const existingIndex = state.collection.findIndex(x => x.id === item.id || (x.title === item.title && x.artist === item.artist));
     if (existingIndex !== -1) {
       state.collection.splice(existingIndex, 1);
     }
     state.collection.unshift(item);
+    saveCollection();
     updateGalleryCount();
     renderShelfGallery();
   }
@@ -987,6 +992,17 @@
   function renderShelfGallery() {
     if (!els.shelfRecordsGrid) return;
     els.shelfRecordsGrid.innerHTML = '';
+
+    if (state.collection.length === 0) {
+      els.shelfRecordsGrid.innerHTML = `
+        <div class="shelf-empty-placeholder">
+          <div class="empty-balloon-icon">🎈</div>
+          <h3 class="empty-shelf-title">まだレコードがありません</h3>
+          <p class="empty-shelf-desc">右上の「GIFTする」ボタンから音楽を1曲空へ放つと、<br>世界の誰かから新しいレコードがあなたの棚へ届きます。</p>
+        </div>
+      `;
+      return;
+    }
 
     state.collection.forEach((item, index) => {
       const card = document.createElement('div');
@@ -1031,83 +1047,49 @@
     // PLAYER タブに切り替え
     switchTab('player');
 
-    if (item.sourceType === 'demo') {
-      state.audioSourceType = 'demo';
-      state.duration = item.duration || 92;
-      state.currentTime = 0;
-      els.trackTitle.textContent = item.title;
-      els.trackArtist.textContent = item.artist || '見知らぬ誰かからの贈り物';
-      if (els.sourceBadge) els.sourceBadge.textContent = 'Preset Track';
-      if (els.formatBadge) els.formatBadge.textContent = 'DEMO • 33⅓ RPM';
-      applyCoverArtwork(item.coverUrl);
-      const lyricsLrc = item.lyrics || DEMO_LYRICS_LRC;
-      if (els.lyricsTextarea) els.lyricsTextarea.value = lyricsLrc;
-      renderLyrics(parseLRC(lyricsLrc));
+    state.audioSourceType = 'gift';
+    state.currentTime = 0;
+    els.trackTitle.textContent = item.title;
+    els.trackArtist.textContent = item.artist || '見知らぬ誰かからの贈り物';
+    if (els.sourceBadge) els.sourceBadge.textContent = 'GIFT VINYL';
+    if (els.formatBadge) els.formatBadge.textContent = 'ANONYMOUS • 33⅓ RPM';
+    applyCoverArtwork(item.coverUrl || 'assets/default_cover.jpg');
 
-      if (demoAudioBlobUrl) {
-        audioElement.src = demoAudioBlobUrl;
-        audioElement.loop = true;
-        audioElement.onloadedmetadata = () => {
-          state.duration = audioElement.duration || item.duration || 92;
-          updateTimeDisplay();
-          startPlayback();
-        };
-        startPlayback();
-      } else {
-        renderDemoWav((blobUrl) => {
-          demoAudioBlobUrl = blobUrl;
-          audioElement.src = blobUrl;
-          audioElement.loop = true;
-          startPlayback();
-        });
-      }
-    } else if (item.sourceType === 'gift') {
-      state.audioSourceType = 'gift';
-      state.currentTime = 0;
-      els.trackTitle.textContent = item.title;
-      els.trackArtist.textContent = item.artist || '見知らぬ誰かからの贈り物';
-      if (els.sourceBadge) els.sourceBadge.textContent = 'GIFT VINYL';
-      if (els.formatBadge) els.formatBadge.textContent = 'ANONYMOUS • 33⅓ RPM';
-      applyCoverArtwork(item.coverUrl);
-
-      if (item.lyrics && item.lyrics.trim().length > 0) {
-        if (els.lyricsTextarea) els.lyricsTextarea.value = item.lyrics;
-        renderLyrics(parseLRC(item.lyrics));
-      } else {
-        renderLyrics([]);
-      }
-
-      if (item.file) {
-        handleAudioFile(item.file);
-      } else if (item.localAudioUrl || item.audioUrl) {
-        audioElement.src = item.localAudioUrl || item.audioUrl;
-        audioElement.loop = true;
-        audioElement.onerror = () => {
-          if (item.audioUrl && audioElement.src !== item.audioUrl) {
-            audioElement.src = item.audioUrl;
-          }
-        };
-        audioElement.onloadedmetadata = () => {
-          state.duration = audioElement.duration || 239.92;
-          updateTimeDisplay();
-          startPlayback();
-        };
-        startPlayback();
-      } else {
-        // デモ曲のWAVをストリーム再生
-        renderDemoWav((blobUrl) => {
-          audioElement.src = blobUrl;
-          audioElement.loop = true;
-          startPlayback();
-        });
-      }
-    } else if (item.file) {
-      handleAudioFile(item.file);
+    if (item.lyrics && item.lyrics.trim().length > 0) {
+      if (els.lyricsTextarea) els.lyricsTextarea.value = item.lyrics;
+      renderLyrics(parseLRC(item.lyrics));
+    } else {
+      renderLyrics([]);
     }
+
+    if (item.file) {
+      handleAudioFile(item.file);
+    } else if (item.localAudioUrl || item.audioUrl) {
+      audioElement.src = item.localAudioUrl || item.audioUrl;
+      audioElement.loop = true;
+      audioElement.onerror = () => {
+        if (item.audioUrl && audioElement.src !== item.audioUrl) {
+          audioElement.src = item.audioUrl;
+        }
+      };
+      audioElement.onloadedmetadata = () => {
+        state.duration = audioElement.duration || 239.92;
+        updateTimeDisplay();
+        startPlayback();
+      };
+      startPlayback();
+    } else {
+      // フォールバック
+      startPlayback();
+    }
+
     state.currentCollectionIndex = index;
     state.currentTrackInfo = item;
     updateCommentGiftButton();
     renderShelfGallery();
+
+    // 再生イベントを記録＆送信者への通知をトリガー！
+    recordTrackPlayback(item);
   }
 
   function switchTab(tabName) {
@@ -1388,19 +1370,19 @@
     // 棚のリセット
     if (els.btnClearHistory) {
       els.btnClearHistory.addEventListener('click', () => {
-        state.collection = [
-          {
-            id: 'demo-track',
-            title: 'Chasing The Eclipse',
-            artist: '見知らぬ誰かからの贈り物',
-            coverUrl: 'assets/default_cover.jpg',
-            sourceType: 'demo',
-            file: null,
-            durationStr: '01:45',
-          }
-        ];
+        if (!confirm('飾り棚のレコード履歴をクリアしますか？')) return;
+        state.collection = [];
+        saveCollection();
         updateGalleryCount();
         renderShelfGallery();
+        pausePlayback();
+        state.currentTrackInfo = null;
+        if (els.trackTitle) els.trackTitle.textContent = 'GIFT を待っています';
+        if (els.trackArtist) els.trackArtist.textContent = '上の「GIFTする」から音楽を贈ると、誰かからレコードが届きます';
+        if (els.sourceBadge) els.sourceBadge.textContent = 'STANDBY';
+        if (els.formatBadge) els.formatBadge.textContent = '33⅓ RPM';
+        applyCoverArtwork('assets/default_cover.jpg');
+        renderLyrics([]);
       });
     }
   }
@@ -1534,8 +1516,8 @@
     }
   ];
 
-  // ギフト曲の配達（初回は必ず「涙を集めるバケツ」が届く）
-  function deliverGiftTrack() {
+  // ギフト曲の配達（初回は必ず「涙を集めるバケツ」が届く。2回目以降はFirestoreの実曲またはプール）
+  async function deliverGiftTrack() {
     const hasNamidaBucket = state.collection.some(t => t.title === '涙を集めるバケツ');
     let receivedItem;
 
@@ -1543,6 +1525,8 @@
       // ユーザー要望: 「涙を集めるバケツ」はデフォルトではなくギフトで届く！
       receivedItem = {
         id: 'gift-namida-bucket-' + Date.now(),
+        trackId: 'gift-namida-bucket',
+        creatorUid: 'official-gift-amu',
         title: NAMIDA_BUCKET_TRACK.title,
         artist: NAMIDA_BUCKET_TRACK.artist,
         coverUrl: NAMIDA_BUCKET_TRACK.coverUrl,
@@ -1555,25 +1539,75 @@
         duration: NAMIDA_BUCKET_TRACK.duration,
       };
     } else {
-      // 既に受け取り済みの場合は、EXCHANGE_POOL からまだ持っていない曲、またはランダム
-      const existingTitles = state.collection.map(c => c.title);
-      let candidates = EXCHANGE_POOL.filter(p => !existingTitles.includes(p.title));
-      if (candidates.length === 0) candidates = EXCHANGE_POOL;
-      const giftTrack = candidates[Math.floor(Math.random() * candidates.length)];
+      // 1. Firestore の tracks から他のリスナーが放った曲を探す
+      let firestoreCandidates = [];
+      if (fbDb) {
+        try {
+          const snap = await fbDb.collection('tracks').limit(30).get();
+          if (!snap.empty) {
+            const currentUid = getCurrentUserId();
+            const existingTitles = state.collection.map(c => c.title);
+            snap.forEach(doc => {
+              const d = doc.data();
+              if (!existingTitles.includes(d.title)) {
+                firestoreCandidates.push({
+                  trackId: doc.id,
+                  creatorUid: d.creatorUid,
+                  title: d.title,
+                  artist: d.artist || '見知らぬ誰かからの贈り物',
+                  coverUrl: d.coverUrl || 'assets/default_cover.jpg',
+                  lyrics: d.lyrics || '',
+                  audioUrl: d.audioUrl || null,
+                  duration: 120,
+                  durationStr: '02:00',
+                });
+              }
+            });
+          }
+        } catch (e) {
+          console.warn('Firestore tracks search fallback:', e);
+        }
+      }
 
-      receivedItem = {
-        id: 'gift-received-' + Date.now(),
-        title: giftTrack.title,
-        artist: giftTrack.artist || '見知らぬ誰かからの贈り物',
-        coverUrl: giftTrack.coverUrl,
-        lyrics: giftTrack.lyrics,
-        sourceType: 'gift',
-        audioUrl: giftTrack.audioUrl || null,
-        localAudioUrl: giftTrack.localAudioUrl || null,
-        file: null,
-        durationStr: giftTrack.durationStr || '02:00',
-        duration: giftTrack.duration || 120,
-      };
+      if (firestoreCandidates.length > 0) {
+        const picked = firestoreCandidates[Math.floor(Math.random() * firestoreCandidates.length)];
+        receivedItem = {
+          id: 'gift-received-' + Date.now(),
+          trackId: picked.trackId,
+          creatorUid: picked.creatorUid,
+          title: picked.title,
+          artist: picked.artist,
+          coverUrl: picked.coverUrl,
+          lyrics: picked.lyrics,
+          sourceType: 'gift',
+          audioUrl: picked.audioUrl,
+          file: null,
+          durationStr: picked.durationStr,
+          duration: picked.duration,
+        };
+      } else {
+        // 2. EXCHANGE_POOL から選定
+        const existingTitles = state.collection.map(c => c.title);
+        let candidates = EXCHANGE_POOL.filter(p => !existingTitles.includes(p.title));
+        if (candidates.length === 0) candidates = EXCHANGE_POOL;
+        const giftTrack = candidates[Math.floor(Math.random() * candidates.length)];
+
+        receivedItem = {
+          id: 'gift-received-' + Date.now(),
+          trackId: null,
+          creatorUid: null,
+          title: giftTrack.title,
+          artist: giftTrack.artist || '見知らぬ誰かからの贈り物',
+          coverUrl: giftTrack.coverUrl,
+          lyrics: giftTrack.lyrics,
+          sourceType: 'gift',
+          audioUrl: giftTrack.audioUrl || null,
+          localAudioUrl: giftTrack.localAudioUrl || null,
+          file: null,
+          durationStr: giftTrack.durationStr || '02:00',
+          duration: giftTrack.duration || 120,
+        };
+      }
     }
 
     // コレクション棚の先頭に追加
@@ -1650,6 +1684,136 @@
     renderAuthUI();
   }
 
+  function getCurrentUserId() {
+    if (fbUser && fbUser.uid) return fbUser.uid;
+    const googleUser = getGoogleUser();
+    if (googleUser && googleUser.uid) return googleUser.uid;
+    let uid = localStorage.getItem('amu_user_uid');
+    if (!uid) {
+      uid = 'user_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
+      localStorage.setItem('amu_user_uid', uid);
+    }
+    return uid;
+  }
+
+  function getMySentTracks() {
+    try {
+      const data = localStorage.getItem('amu_my_sent_tracks');
+      return data ? JSON.parse(data) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function recordMySentTrack(trackId, title) {
+    try {
+      const list = getMySentTracks();
+      if (!list.some(t => t.id === trackId || t.title === title)) {
+        list.push({ id: trackId, title: title, playCount: 0, notified5: false });
+        localStorage.setItem('amu_my_sent_tracks', JSON.stringify(list));
+      }
+    } catch (e) {}
+  }
+
+  let lastTrackPlaybackTime = 0;
+  let lastTrackPlaybackId = null;
+
+  /**
+   * 受信者が曲を再生した際に、送信者へ通知を送信＆5回再生でお気に入り通知
+   */
+  function recordTrackPlayback(item) {
+    if (!item) return;
+    const now = Date.now();
+    const itemId = item.trackId || item.id || item.title;
+    if (lastTrackPlaybackId === itemId && (now - lastTrackPlaybackTime) < 8000) {
+      return;
+    }
+    lastTrackPlaybackId = itemId;
+    lastTrackPlaybackTime = now;
+
+    const currentUid = getCurrentUserId();
+
+    // 1. Firestore での再生カウント＆送信者通知
+    if (fbDb && item.trackId) {
+      const trackRef = fbDb.collection('tracks').doc(item.trackId);
+      fbDb.runTransaction(async (transaction) => {
+        const doc = await transaction.get(trackRef);
+        if (!doc.exists) return;
+        const data = doc.data();
+        const newPlayCount = (data.playCount || 0) + 1;
+        transaction.update(trackRef, { playCount: newPlayCount });
+
+        const creatorUid = data.creatorUid;
+        if (creatorUid && creatorUid !== currentUid) {
+          // 誰かが再生してくれた時の通知
+          if (newPlayCount === 1) {
+            await fbDb.collection('notifications').add({
+              toUserId: creatorUid,
+              type: 'track_played',
+              trackId: item.trackId,
+              trackTitle: data.title || item.title,
+              title: 'あなたの音楽が再生されました 🎈',
+              body: `見知らぬ誰かが、空から届いたあなたの「${data.title || item.title}」に針を落として聴いてくれています。`,
+              timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+              read: false
+            });
+          }
+
+          // 5回再生された時の特別通知（とても気に入ってくれたようです）
+          if (newPlayCount === 5) {
+            await fbDb.collection('notifications').add({
+              toUserId: creatorUid,
+              type: 'track_loved_5',
+              trackId: item.trackId,
+              trackTitle: data.title || item.title,
+              title: '✨ 5回再生されました！気に入ってくれたようです',
+              body: `あなたがGIFTした「${data.title || item.title}」が5回再生されました！どうやらとても気に入ってくれたようです。何度も針を落として大切に聴かれています 🎈✨`,
+              timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+              read: false
+            });
+          }
+        }
+      }).catch(e => console.warn('Play transaction error:', e));
+    }
+
+    // 2. ローカル・同一ブラウザでの検証用シミュレーション（1台の端末やテスト環境でも通知を即座に体感できるように）
+    const mySent = getMySentTracks();
+    const sentTrack = mySent.find(t => (item.trackId && t.id === item.trackId) || t.title === item.title);
+    if (sentTrack) {
+      sentTrack.playCount = (sentTrack.playCount || 0) + 1;
+      localStorage.setItem('amu_my_sent_tracks', JSON.stringify(mySent));
+
+      if (sentTrack.playCount === 1) {
+        setTimeout(() => {
+          triggerLocalNotification(
+            'あなたの音楽が再生されました 🎈',
+            `見知らぬ誰かが、空から届いたあなたの「${sentTrack.title}」に針を落として聴いてくれています。`
+          );
+        }, 1200);
+      } else if (sentTrack.playCount === 5 && !sentTrack.notified5) {
+        sentTrack.notified5 = true;
+        localStorage.setItem('amu_my_sent_tracks', JSON.stringify(mySent));
+        setTimeout(() => {
+          triggerLocalNotification(
+            '✨ 5回再生されました！気に入ってくれたようです',
+            `あなたがGIFTした「${sentTrack.title}」が5回再生されました！どうやらとても気に入ってくれたようです。何度も針を落として大切に聴かれています 🎈✨`
+          );
+        }, 1200);
+      }
+    }
+  }
+
+  function triggerLocalNotification(title, message) {
+    showGentleToast(title, message);
+    saveLetterNotification({
+      id: 'notif-' + Date.now(),
+      timestamp: 'たった今',
+      title: title,
+      body: message,
+      read: false
+    });
+  }
+
   /**
    * Firestore から自分宛て（または全員宛て）の手紙をリアルタイム監視
    */
@@ -1663,13 +1827,11 @@
         .orderBy('createdAt', 'desc')
         .limit(20)
         .onSnapshot((snapshot) => {
-          let hasNew = false;
           snapshot.docChanges().forEach((change) => {
             if (change.type === 'added') {
               const data = change.doc.data();
               // 自分が送ったものでない場合、通知トーストを表示
               if (fbUser && data.fromUserId !== fbUser.uid) {
-                hasNew = true;
                 showGentleToast(
                   '風船に乗った感想が届きました 🎈',
                   `「${data.trackTitle || '曲'}」へ感想が届きました：「${(data.body || '').slice(0, 30)}...」`
@@ -1700,6 +1862,45 @@
         });
     } catch (err) {
       console.warn('Firestore snapshot setup error:', err);
+    }
+  }
+
+  /**
+   * Firestore から自分宛ての再生通知・5回お気に入り通知をリアルタイム監視
+   */
+  let unsubscribeNotifications = null;
+  function listenToUserNotifications(uid) {
+    if (!fbDb || !uid) return;
+    if (unsubscribeNotifications) unsubscribeNotifications();
+
+    try {
+      unsubscribeNotifications = fbDb.collection('notifications')
+        .where('toUserId', '==', uid)
+        .orderBy('timestamp', 'desc')
+        .limit(20)
+        .onSnapshot((snapshot) => {
+          snapshot.docChanges().forEach((change) => {
+            if (change.type === 'added') {
+              const data = change.doc.data();
+              const notifKey = `amu_seen_notif_${change.doc.id}`;
+              if (!localStorage.getItem(notifKey)) {
+                localStorage.setItem(notifKey, '1');
+                showGentleToast(data.title, data.body);
+                saveLetterNotification({
+                  id: change.doc.id,
+                  timestamp: 'たった今',
+                  title: data.title,
+                  body: data.body,
+                  read: false
+                });
+              }
+            }
+          });
+        }, (err) => {
+          console.warn('Notifications listener notice:', err);
+        });
+    } catch (e) {
+      console.warn('Notifications listener setup error:', e);
     }
   }
 
@@ -1776,6 +1977,10 @@
 
   function showGentleToast(title, message) {
     if (!els.gentleToast) return;
+    const titleEl = els.gentleToast.querySelector('.toast-body strong');
+    if (titleEl && title) {
+      titleEl.textContent = title;
+    }
     if (els.toastMessage) {
       els.toastMessage.textContent = message || '世界のどこかの街で、あなたの音楽がレコードに針を落とされました。';
     }
@@ -1881,14 +2086,20 @@
             avatar: user.photoURL || 'assets/user_walnut.jpg'
           });
           listenToUserLetters(user.uid);
+          listenToUserNotifications(user.uid);
         } else {
           fbUser = null;
           setGoogleUser(null);
-          listenToUserLetters('guest');
+          const localUid = getCurrentUserId();
+          listenToUserLetters(localUid);
+          listenToUserNotifications(localUid);
         }
       });
     } else {
       renderAuthUI();
+      const localUid = getCurrentUserId();
+      listenToUserLetters(localUid);
+      listenToUserNotifications(localUid);
     }
 
     if (els.btnGoogleLogin) {
@@ -2061,19 +2272,24 @@
           try {
             uploadedCdnUrl = await uploadAudioToBunny(file, songTitle);
             // Firestore の tracks コレクションへ保存
+            const currentUid = getCurrentUserId();
+            let savedTrackDocId = null;
             if (fbDb && uploadedCdnUrl) {
-              await fbDb.collection('tracks').add({
+              const docRef = await fbDb.collection('tracks').add({
                 title: songTitle,
                 artist: '見知らぬ誰かからの贈り物',
                 audioUrl: uploadedCdnUrl,
                 coverUrl: COVER_PRESETS[Math.floor(Math.random() * COVER_PRESETS.length)],
                 lyrics: lyricsText || '',
-                creatorUid: fbUser ? fbUser.uid : 'guest',
-                creatorName: fbUser ? fbUser.displayName : '匿名クリエイター',
+                creatorUid: currentUid,
+                creatorName: fbUser ? (fbUser.displayName || '匿名リスナー') : '匿名リスナー',
+                playCount: 0,
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
               });
-              console.log('Saved to Firestore tracks successfully');
+              savedTrackDocId = docRef.id;
+              console.log('Saved to Firestore tracks successfully:', savedTrackDocId);
             }
+            recordMySentTrack(savedTrackDocId || ('sent-' + Date.now()), songTitle);
           } catch (e) {
             console.warn('Bunny / Firestore upload fallback:', e);
           }
@@ -2442,34 +2658,27 @@
     initGiftSNS();
     initOpeningFlow();
 
-    // デフォルト歌詞のセットアップ (Chasing The Eclipse)
-    if (els.lyricsTextarea) els.lyricsTextarea.value = DEMO_LYRICS_LRC;
-    renderLyrics(parseLRC(DEMO_LYRICS_LRC));
     updateTimeDisplay();
-    els.btnToggleNoise.classList.add('active');
-    els.crackleBadge.classList.add('active');
+    if (els.btnToggleNoise) els.btnToggleNoise.classList.add('active');
+    if (els.crackleBadge) els.crackleBadge.classList.add('active');
+
+    // コレクションのロード（デモ曲を除外）
+    state.collection = loadCollection();
     updateGalleryCount();
     renderShelfGallery();
 
-    // デモ曲のオフラインWAVレンダリングを行いaudioElementにプリロード
-    renderDemoWav((blobUrl) => {
-      demoAudioBlobUrl = blobUrl;
-      if (state.audioSourceType === 'demo') {
-        audioElement.src = blobUrl;
-        audioElement.loop = true;
-        audioElement.onloadedmetadata = () => {
-          state.duration = audioElement.duration || 92;
-          updateTimeDisplay();
-        };
-      }
-    });
-
-    applyCoverArtwork(state.currentTrackInfo.coverUrl);
-    if (els.trackTitle) els.trackTitle.textContent = state.currentTrackInfo.title;
-    if (els.trackArtist) els.trackArtist.textContent = state.currentTrackInfo.artist;
-    if (els.sourceBadge) els.sourceBadge.textContent = 'Preset Track';
-    if (els.formatBadge) els.formatBadge.textContent = 'DEMO • 33⅓ RPM';
-    updateCommentGiftButton();
+    if (state.collection.length > 0) {
+      playCollectionItem(0);
+    } else {
+      state.currentTrackInfo = null;
+      applyCoverArtwork('assets/default_cover.jpg');
+      if (els.trackTitle) els.trackTitle.textContent = 'GIFT を待っています';
+      if (els.trackArtist) els.trackArtist.textContent = '上の「GIFTする」から音楽を贈ると、誰かからレコードが届きます';
+      if (els.sourceBadge) els.sourceBadge.textContent = 'STANDBY';
+      if (els.formatBadge) els.formatBadge.textContent = '33⅓ RPM';
+      if (els.lyricsTextarea) els.lyricsTextarea.value = '';
+      renderLyrics([]);
+    }
   }
 
   window.addEventListener('DOMContentLoaded', init);
