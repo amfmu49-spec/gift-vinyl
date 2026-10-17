@@ -2338,13 +2338,17 @@
         if (els.giftMovieOverlay && els.openingVideo) {
           els.giftMovieOverlay.style.display = 'flex';
           els.giftMovieOverlay.style.opacity = '1';
+          els.openingVideo.currentTime = 0;
 
           const playPromise = els.openingVideo.play();
           if (playPromise !== undefined) {
             playPromise.catch(err => {
-              console.warn('Video autoplay notice (file may not be placed yet):', err);
-              // 動画が未配置・再生不可の場合はスムーズにギャラリー棚へ直行
-              skipMovieToGallery();
+              console.warn('Unmuted play blocked, retrying with muted fallback:', err);
+              els.openingVideo.muted = true;
+              els.openingVideo.play().catch(e => {
+                console.warn('Video playback notice (skipping to gallery):', e);
+                skipMovieToGallery();
+              });
             });
           }
         } else {
