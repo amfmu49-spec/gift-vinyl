@@ -1741,26 +1741,32 @@
         if (!doc.exists) return;
         const data = doc.data();
         const newPlayCount = (data.playCount || 0) + 1;
-        transaction.update(trackRef, { playCount: newPlayCount });
+        const isFirstPlay = !data.firstPlayNotified && (newPlayCount === 1);
+        const isLoved5 = !data.loved5Notified && (newPlayCount >= 5);
+
+        const updates = { playCount: newPlayCount };
+        if (isFirstPlay) updates.firstPlayNotified = true;
+        if (isLoved5) updates.loved5Notified = true;
+        transaction.update(trackRef, updates);
 
         const creatorUid = data.creatorUid;
         if (creatorUid && creatorUid !== currentUid) {
-          // 誰かが再生してくれた時の通知
-          if (newPlayCount === 1) {
+          // 【初めてその曲が再生された時だけ】通知！
+          if (isFirstPlay) {
             await fbDb.collection('notifications').add({
               toUserId: creatorUid,
               type: 'track_played',
               trackId: item.trackId,
               trackTitle: data.title || item.title,
-              title: 'あなたの音楽が再生されました 🎈',
-              body: `見知らぬ誰かが、空から届いたあなたの「${data.title || item.title}」に針を落として聴いてくれています。`,
+              title: 'あなたの音楽が初めて再生されました 🎈',
+              body: `見知らぬ誰かが、空から届いたあなたの「${data.title || item.title}」に初めて針を落として聴いてくれています。`,
               timestamp: firebase.firestore.FieldValue.serverTimestamp(),
               read: false
             });
           }
 
           // 5回再生された時の特別通知（とても気に入ってくれたようです）
-          if (newPlayCount === 5) {
+          if (isLoved5) {
             await fbDb.collection('notifications').add({
               toUserId: creatorUid,
               type: 'track_loved_5',
@@ -1783,14 +1789,17 @@
       sentTrack.playCount = (sentTrack.playCount || 0) + 1;
       localStorage.setItem('amu_my_sent_tracks', JSON.stringify(mySent));
 
-      if (sentTrack.playCount === 1) {
+      // 初めて再生された時だけ通知
+      if (sentTrack.playCount === 1 && !sentTrack.notifiedFirstPlay) {
+        sentTrack.notifiedFirstPlay = true;
+        localStorage.setItem('amu_my_sent_tracks', JSON.stringify(mySent));
         setTimeout(() => {
           triggerLocalNotification(
-            'あなたの音楽が再生されました 🎈',
-            `見知らぬ誰かが、空から届いたあなたの「${sentTrack.title}」に針を落として聴いてくれています。`
+            'あなたの音楽が初めて再生されました 🎈',
+            `見知らぬ誰かが、空から届いたあなたの「${sentTrack.title}」に初めて針を落として聴いてくれています。`
           );
         }, 1200);
-      } else if (sentTrack.playCount === 5 && !sentTrack.notified5) {
+      } else if (sentTrack.playCount >= 5 && !sentTrack.notified5) {
         sentTrack.notified5 = true;
         localStorage.setItem('amu_my_sent_tracks', JSON.stringify(mySent));
         setTimeout(() => {
@@ -2502,10 +2511,8 @@
   function initOpeningFlow() {
     if (!els.giftSplashOverlay) return;
 
-    // 1. 総参加人数・総楽曲数の実データ集計（デモ値ではなく実際のものを使用）
-    const defaultAvailableTracks = (typeof EXCHANGE_POOL !== 'undefined' ? EXCHANGE_POOL.length : 5);
-    const userGifts = getDailyGiftCount();
-    let currentTracks = defaultAvailableTracks + userGifts;
+    // 1. 総参加人数・総楽曲数の実データ集計（ダミーのプリセット配列は含めず、実際の曲数・参加者のみ）
+    let currentTracks = 1;
     let currentUsers = 1;
 
     if (els.splashTotalUsers) els.splashTotalUsers.textContent = currentUsers.toLocaleString();
@@ -2549,7 +2556,8 @@
         if (fbUser && fbUser.uid) participantSet.add(fbUser.uid);
 
         currentUsers = Math.max(1, participantSet.size);
-        currentTracks = defaultAvailableTracks + firestoreTrackCount + userGifts;
+        // 実際の曲数（Firestore上の曲数）
+        currentTracks = Math.max(1, firestoreTrackCount);
 
         if (els.splashTotalUsers) els.splashTotalUsers.textContent = currentUsers.toLocaleString();
         if (els.splashTotalTracks) els.splashTotalTracks.textContent = currentTracks.toLocaleString();
