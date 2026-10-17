@@ -168,6 +168,14 @@
     commentModalCover: document.getElementById('commentModalCover'),
     commentModalTitle: document.getElementById('commentModalTitle'),
     commentModalArtist: document.getElementById('commentModalArtist'),
+    // スプラッシュ画面 ＆ オープニングムービー
+    giftSplashOverlay: document.getElementById('giftSplashOverlay'),
+    splashTotalUsers: document.getElementById('splashTotalUsers'),
+    splashTotalTracks: document.getElementById('splashTotalTracks'),
+    giftMovieOverlay: document.getElementById('giftMovieOverlay'),
+    openingVideo: document.getElementById('openingVideo'),
+    btnSkipMovie: document.getElementById('btnSkipMovie'),
+    movieTouchOverlay: document.getElementById('movieTouchOverlay'),
   };
 
   // --- State ---
@@ -880,10 +888,10 @@
 
     // タイトル推定
     let cleanName = file.name.replace(/\.[^/.]+$/, '');
-    els.trackTitle.textContent = cleanName;
-    els.trackArtist.textContent = 'Local Audio File';
-    els.sourceBadge.textContent = file.type.toUpperCase().includes('WAV') ? 'WAV Audio' : 'MP3 Audio';
-    els.formatBadge.textContent = `${file.name.split('.').pop().toUpperCase()} • ${Math.round(state.rpm)} RPM`;
+    if (els.trackTitle) els.trackTitle.textContent = cleanName;
+    if (els.trackArtist) els.trackArtist.textContent = 'Local Audio File';
+    if (els.sourceBadge) els.sourceBadge.textContent = file.type.toUpperCase().includes('WAV') ? 'WAV Audio' : 'MP3 Audio';
+    if (els.formatBadge) els.formatBadge.textContent = `${file.name.split('.').pop().toUpperCase()} • ${Math.round(state.rpm)} RPM`;
 
     // 歌詞が入っていない曲はカバーアートのみを表示！
     renderLyrics([]);
@@ -1029,8 +1037,8 @@
       state.currentTime = 0;
       els.trackTitle.textContent = item.title;
       els.trackArtist.textContent = item.artist || '見知らぬ誰かからの贈り物';
-      els.sourceBadge.textContent = 'Preset Track';
-      els.formatBadge.textContent = 'DEMO • 33⅓ RPM';
+      if (els.sourceBadge) els.sourceBadge.textContent = 'Preset Track';
+      if (els.formatBadge) els.formatBadge.textContent = 'DEMO • 33⅓ RPM';
       applyCoverArtwork(item.coverUrl);
       const lyricsLrc = item.lyrics || DEMO_LYRICS_LRC;
       if (els.lyricsTextarea) els.lyricsTextarea.value = lyricsLrc;
@@ -1058,8 +1066,8 @@
       state.currentTime = 0;
       els.trackTitle.textContent = item.title;
       els.trackArtist.textContent = item.artist || '見知らぬ誰かからの贈り物';
-      els.sourceBadge.textContent = 'GIFT VINYL';
-      els.formatBadge.textContent = 'ANONYMOUS • 33⅓ RPM';
+      if (els.sourceBadge) els.sourceBadge.textContent = 'GIFT VINYL';
+      if (els.formatBadge) els.formatBadge.textContent = 'ANONYMOUS • 33⅓ RPM';
       applyCoverArtwork(item.coverUrl);
 
       if (item.lyrics && item.lyrics.trim().length > 0) {
@@ -2272,12 +2280,133 @@
     cinemaBox.style.transform = `translate(-50%, -50%) scale(${scale.toFixed(4)})`;
   }
 
+  // ==========================================================================
+  // 11. オープニングスプラッシュ ＆ ムービー再生フロー
+  // ==========================================================================
+  function initOpeningFlow() {
+    if (!els.giftSplashOverlay) return;
+
+    // 1. 総参加人数・総楽曲数の初期表示 ＆ Firestore同期
+    let baseUsers = 1280;
+    let baseTracks = 3420;
+
+    // ユーザーの今日の送信数を加味
+    const userGifts = getDailyGiftCount();
+    baseTracks += userGifts;
+
+    if (els.splashTotalUsers) els.splashTotalUsers.textContent = baseUsers.toLocaleString();
+    if (els.splashTotalTracks) els.splashTotalTracks.textContent = baseTracks.toLocaleString();
+
+    // Firestoreからリアルタイム集計を反映（接続時）
+    if (fbDb) {
+      fbDb.collection('tracks').get().then(snap => {
+        if (snap && snap.size) {
+          const totalT = baseTracks + snap.size;
+          if (els.splashTotalTracks) els.splashTotalTracks.textContent = totalT.toLocaleString();
+        }
+      }).catch(e => console.log('Firestore tracks count fallback:', e));
+
+      fbDb.collection('letters').get().then(snap => {
+        if (snap && snap.size) {
+          const totalU = baseUsers + Math.floor(snap.size * 1.5);
+          if (els.splashTotalUsers) els.splashTotalUsers.textContent = totalU.toLocaleString();
+        }
+      }).catch(e => console.log('Firestore letters count fallback:', e));
+    }
+
+    // 2. スプラッシュ画面タップ -> ムービー再生開始
+    let isTransitioning = false;
+
+    function handleSplashTap() {
+      if (isTransitioning) return;
+      isTransitioning = true;
+
+      // オーディオコンテキストの初期化（ブラウザの自動再生ポリシー解除）
+      initAudioContext();
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+
+      // スプラッシュ画面をフェードアウト
+      els.giftSplashOverlay.style.opacity = '0';
+      els.giftSplashOverlay.style.pointerEvents = 'none';
+
+      setTimeout(() => {
+        els.giftSplashOverlay.style.display = 'none';
+
+        // ムービーオーバーレイを表示して再生
+        if (els.giftMovieOverlay && els.openingVideo) {
+          els.giftMovieOverlay.style.display = 'flex';
+          els.giftMovieOverlay.style.opacity = '1';
+
+          const playPromise = els.openingVideo.play();
+          if (playPromise !== undefined) {
+            playPromise.catch(err => {
+              console.warn('Video autoplay notice (file may not be placed yet):', err);
+              // 動画が未配置・再生不可の場合はスムーズにギャラリー棚へ直行
+              skipMovieToGallery();
+            });
+          }
+        } else {
+          skipMovieToGallery();
+        }
+      }, 400);
+    }
+
+    els.giftSplashOverlay.addEventListener('click', handleSplashTap);
+
+    // 3. ムービースキップ -> ギャラリーの棚画面へ
+    let hasSkipped = false;
+
+    function skipMovieToGallery() {
+      if (hasSkipped) return;
+      hasSkipped = true;
+
+      if (els.openingVideo) {
+        try {
+          els.openingVideo.pause();
+        } catch (e) {}
+      }
+
+      if (els.giftMovieOverlay) {
+        els.giftMovieOverlay.style.opacity = '0';
+        els.giftMovieOverlay.style.pointerEvents = 'none';
+        setTimeout(() => {
+          els.giftMovieOverlay.style.display = 'none';
+        }, 350);
+      }
+
+      // ギャラリーの棚の画面（SHELF GALLERY）に切り替え！
+      switchTab('gallery');
+    }
+
+    if (els.btnSkipMovie) {
+      els.btnSkipMovie.addEventListener('click', (e) => {
+        e.stopPropagation();
+        skipMovieToGallery();
+      });
+    }
+
+    if (els.giftMovieOverlay) {
+      els.giftMovieOverlay.addEventListener('click', skipMovieToGallery);
+    }
+
+    if (els.openingVideo) {
+      els.openingVideo.addEventListener('ended', skipMovieToGallery);
+      els.openingVideo.addEventListener('error', () => {
+        console.warn('Opening video not found or error. Transitioning to shelf gallery.');
+        skipMovieToGallery();
+      });
+    }
+  }
+
   function init() {
     fitCinemaToScreen();
     window.addEventListener('resize', fitCinemaToScreen);
     window.addEventListener('orientationchange', () => setTimeout(fitCinemaToScreen, 120));
     setupEventListeners();
     initGiftSNS();
+    initOpeningFlow();
 
     // デフォルト歌詞のセットアップ (Chasing The Eclipse)
     if (els.lyricsTextarea) els.lyricsTextarea.value = DEMO_LYRICS_LRC;
@@ -2302,10 +2431,10 @@
     });
 
     applyCoverArtwork(state.currentTrackInfo.coverUrl);
-    els.trackTitle.textContent = state.currentTrackInfo.title;
-    els.trackArtist.textContent = state.currentTrackInfo.artist;
-    els.sourceBadge.textContent = 'Preset Track';
-    els.formatBadge.textContent = 'DEMO • 33⅓ RPM';
+    if (els.trackTitle) els.trackTitle.textContent = state.currentTrackInfo.title;
+    if (els.trackArtist) els.trackArtist.textContent = state.currentTrackInfo.artist;
+    if (els.sourceBadge) els.sourceBadge.textContent = 'Preset Track';
+    if (els.formatBadge) els.formatBadge.textContent = 'DEMO • 33⅓ RPM';
     updateCommentGiftButton();
   }
 

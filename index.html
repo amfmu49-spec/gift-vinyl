@@ -594,6 +594,62 @@
     </div>
   </div>
 
+  <!-- ==================== オープニング スプラッシュ画面 ==================== -->
+  <div class="gift-splash-overlay" id="giftSplashOverlay">
+    <div class="splash-backdrop-blur"></div>
+    <div class="splash-card-stage">
+      <div class="splash-image-frame">
+        <img src="assets/gift_splash.png" alt="GIFT - 空を旅する音楽" class="splash-art-image">
+        
+        <!-- 「ー ギフト ー」の下に配置される統計バッジエリア -->
+        <div class="splash-stats-area">
+          <div class="splash-stats-pill">
+            <div class="stat-col">
+              <span class="stat-heading">総参加人数</span>
+              <div class="stat-num-box">
+                <span class="stat-icon">👥</span>
+                <strong class="stat-count" id="splashTotalUsers">1,280</strong>
+                <span class="stat-unit">人</span>
+              </div>
+            </div>
+            <div class="stat-divider-vertical"></div>
+            <div class="stat-col">
+              <span class="stat-heading">総楽曲数</span>
+              <div class="stat-num-box">
+                <span class="stat-icon">🎵</span>
+                <strong class="stat-count" id="splashTotalTracks">3,420</strong>
+                <span class="stat-unit">曲</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- タップ案内 -->
+          <div class="splash-tap-guide">
+            <span class="tap-sparkle">✨</span>
+            <span class="tap-guide-text">画面をタップしてはじめる</span>
+            <span class="tap-sparkle">✨</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== オープニング ムービー再生オーバーレイ ==================== -->
+  <div class="gift-movie-overlay" id="giftMovieOverlay" style="display:none;">
+    <div class="movie-player-container" id="moviePlayerContainer">
+      <video id="openingVideo" class="opening-video-screen" playsinline preload="auto">
+        <source src="assets/movies/opening.mp4" type="video/mp4">
+        <source src="assets/opening.mp4" type="video/mp4">
+      </video>
+      <div class="movie-touch-overlay" id="movieTouchOverlay">
+        <div class="movie-skip-btn" id="btnSkipMovie">
+          <span>タップでスキップ (棚へ) ❯❯</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
   <!-- Firebase SDK (v10 compat) -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
