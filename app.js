@@ -159,6 +159,7 @@
     toastMessage: document.getElementById('toastMessage'),
     btnCloseToast: document.getElementById('btnCloseToast'),
     // コメントGIFT (感想を贈って次の曲を受け取る)
+    btnStartCommentGift: document.getElementById('btnStartCommentGift'),
     btnOpenCommentModal: document.getElementById('btnOpenCommentModal'),
     commentGiftModal: document.getElementById('commentGiftModal'),
     btnCloseCommentModal: document.getElementById('btnCloseCommentModal'),
@@ -908,6 +909,14 @@
     audioElement.onended = () => {
       pausePlayback();
       seekToTime(0);
+      const curTrack = state.currentTrackInfo || (state.collection && state.collection[state.currentCollectionIndex]);
+      const curId = curTrack ? curTrack.id : null;
+      if (curId && !isTrackCommented(curId)) {
+        showGentleToast(
+          '曲の再生が終わりました 🎈',
+          `「${curTrack.title}」の作者へ感想（コメント）をGIFTしてみませんか？言葉を贈ると、空から次の音楽が届きます 💌`
+        );
+      }
     };
   }
 
@@ -1602,7 +1611,7 @@
           lyrics: giftTrack.lyrics,
           sourceType: 'gift',
           audioUrl: giftTrack.audioUrl || null,
-          localAudioUrl: giftTrack.localAudioUrl || null,
+          localAudioUrl: giftTrack.localAudioUrl || 'assets/namida_bucket.mp3',
           file: null,
           durationStr: giftTrack.durationStr || '02:00',
           duration: giftTrack.duration || 120,
@@ -2035,6 +2044,11 @@
   function updateCommentGiftButton() {
     if (!els.btnOpenCommentModal) return;
     const curTrack = state.currentTrackInfo || (state.collection && state.collection[state.currentCollectionIndex]);
+    if (!curTrack) {
+      els.btnOpenCommentModal.style.display = 'none';
+      return;
+    }
+    els.btnOpenCommentModal.style.display = 'inline-flex';
     const curId = curTrack ? curTrack.id : 'demo-track';
     const isCommented = isTrackCommented(curId);
 
@@ -2364,6 +2378,72 @@
     // ========================================================================
     // 8. コメントGIFT機能 (感想を作者へ届けて次の曲を受け取るリスナー参加型)
     // ========================================================================
+    // 8-0. モーダル内の「コメントでギフトする」ボタン（投稿曲を持っていないリスナー向け機能）
+    if (els.btnStartCommentGift) {
+      els.btnStartCommentGift.addEventListener('click', async () => {
+        // GIFTスタジオモーダルを閉じる
+        if (els.giftModal) els.giftModal.style.display = 'none';
+
+        // プレイヤー画面へ切り替え
+        switchTab('player');
+
+        const hasAnyTrack = state.collection && state.collection.length > 0;
+        const curTrack = state.currentTrackInfo || (hasAnyTrack ? state.collection[state.currentCollectionIndex] : null);
+
+        if (!hasAnyTrack || !curTrack) {
+          // まだ曲を1曲も持っていない場合：「まず曲が届く！」
+          if (els.exchangeOverlay) {
+            els.exchangeOverlay.style.display = 'flex';
+            if (els.exchangeTitle) els.exchangeTitle.textContent = '見知らぬ誰かからの音楽が、風船に乗って届きました... 🎈';
+            if (els.exchangeDesc) els.exchangeDesc.textContent = 'まずはこの曲を聴いて、作者へ温かい感想の言葉を届けてみましょう';
+
+            setTimeout(() => {
+              if (els.exchangeTitle) els.exchangeTitle.textContent = 'レコードが棚とターンテーブルに舞い降りました 🎈';
+              if (els.exchangeDesc) els.exchangeDesc.textContent = '針を落として音に浸りましょう';
+            }, 1800);
+
+            setTimeout(async () => {
+              if (els.exchangeOverlay) els.exchangeOverlay.style.display = 'none';
+              await deliverGiftTrack();
+
+              showGentleToast(
+                '曲が届きました！ 🎈',
+                'まずはこの曲を聴いてみましょう。聴いた後に「感想をGIFT」からコメントを贈ると、次の曲が空から届きます 💌'
+              );
+            }, 3600);
+          } else {
+            await deliverGiftTrack();
+          }
+          return;
+        }
+
+        // 既に曲がある場合
+        const curId = curTrack.id;
+        if (!isTrackCommented(curId)) {
+          // 現在の曲にまだコメントしていない場合：コメントモーダルを開く
+          openCommentModal('この曲に感想（コメント）をGIFTすると、空から次の音楽が風船に乗って届きます 🎈');
+        } else {
+          // 既に現在の曲にコメント済みの場合は、次の新しい曲を届ける！
+          if (els.exchangeOverlay) {
+            els.exchangeOverlay.style.display = 'flex';
+            if (els.exchangeTitle) els.exchangeTitle.textContent = '感想を贈ってくれたあなたへ、次の音楽が届きます... 🎈';
+            if (els.exchangeDesc) els.exchangeDesc.textContent = '空から新しいレコードが舞い降ります';
+
+            setTimeout(async () => {
+              if (els.exchangeOverlay) els.exchangeOverlay.style.display = 'none';
+              await deliverGiftTrack();
+              showGentleToast(
+                '次の曲が届きました！ 🎈',
+                'この曲にも感想をGIFTすると、また次の新しい曲が空から届きます 💌'
+              );
+            }, 2500);
+          } else {
+            await deliverGiftTrack();
+          }
+        }
+      });
+    }
+
     if (els.btnOpenCommentModal) {
       els.btnOpenCommentModal.addEventListener('click', () => {
         openCommentModal();
@@ -2445,16 +2525,18 @@
           setTimeout(() => {
             if (els.exchangeOverlay) els.exchangeOverlay.style.display = 'none';
 
-            // ギフト曲の配達（初回は「涙を集めるバケツ」が届く）
+            // ギフト曲の配達（感想のお礼に次の曲が届く！）
             deliverGiftTrack();
           }, 3600);
+        } else {
+          deliverGiftTrack();
         }
 
         // 6. 5秒後に優しい通知トースト
         setTimeout(() => {
           showGentleToast(
             '風船に乗った感想が作者へ届きました 🎈',
-            `風船に乗せたあなたの温かい言葉が、「${curTitle}」の作者のもとへふわりと舞い降りました。`
+            `風船に乗せたあなたの温かい言葉が、「${curTitle}」の作者のもとへ届き、空から次の新しい音楽が舞い降りました。`
           );
         }, 5500);
       });
