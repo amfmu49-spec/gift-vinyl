@@ -2286,35 +2286,63 @@
   function initOpeningFlow() {
     if (!els.giftSplashOverlay) return;
 
-    // 1. 総参加人数・総楽曲数の初期表示 ＆ Firestore同期
-    let baseUsers = 1280;
-    let baseTracks = 3420;
-
-    // ユーザーの今日の送信数を加味
+    // 1. 総参加人数・総楽曲数の実データ集計（デモ値ではなく実際のものを使用）
+    const defaultAvailableTracks = (typeof EXCHANGE_POOL !== 'undefined' ? EXCHANGE_POOL.length : 5);
     const userGifts = getDailyGiftCount();
-    baseTracks += userGifts;
+    let currentTracks = defaultAvailableTracks + userGifts;
+    let currentUsers = 1;
 
-    if (els.splashTotalUsers) els.splashTotalUsers.textContent = baseUsers.toLocaleString();
-    if (els.splashTotalTracks) els.splashTotalTracks.textContent = baseTracks.toLocaleString();
+    if (els.splashTotalUsers) els.splashTotalUsers.textContent = currentUsers.toLocaleString();
+    if (els.splashTotalTracks) els.splashTotalTracks.textContent = currentTracks.toLocaleString();
 
-    // Firestoreからリアルタイム集計を反映（接続時）
+    // Firestoreから実データをリアルタイム取得して反映
     if (fbDb) {
-      fbDb.collection('tracks').get().then(snap => {
-        if (snap && snap.size) {
-          const totalT = baseTracks + snap.size;
-          if (els.splashTotalTracks) els.splashTotalTracks.textContent = totalT.toLocaleString();
-        }
-      }).catch(e => console.log('Firestore tracks count fallback:', e));
+      Promise.all([
+        fbDb.collection('tracks').get().catch(e => {
+          console.warn('Tracks fetch error:', e);
+          return null;
+        }),
+        fbDb.collection('letters').get().catch(e => {
+          console.warn('Letters fetch error:', e);
+          return null;
+        })
+      ]).then(([tracksSnap, lettersSnap]) => {
+        const participantSet = new Set();
+        let firestoreTrackCount = 0;
 
-      fbDb.collection('letters').get().then(snap => {
-        if (snap && snap.size) {
-          const totalU = baseUsers + Math.floor(snap.size * 1.5);
-          if (els.splashTotalUsers) els.splashTotalUsers.textContent = totalU.toLocaleString();
+        if (tracksSnap && !tracksSnap.empty) {
+          firestoreTrackCount = tracksSnap.size;
+          tracksSnap.forEach(doc => {
+            const data = doc.data();
+            if (data.creatorUid) participantSet.add(data.creatorUid);
+            if (data.fromUserId) participantSet.add(data.fromUserId);
+          });
         }
-      }).catch(e => console.log('Firestore letters count fallback:', e));
+
+        if (lettersSnap && !lettersSnap.empty) {
+          lettersSnap.forEach(doc => {
+            const data = doc.data();
+            if (data.fromUserId) participantSet.add(data.fromUserId);
+            if (data.toUserId) participantSet.add(data.toUserId);
+          });
+        }
+
+        // ログイン中ユーザーまたはローカルユーザーを加算
+        const localUser = getGoogleUser();
+        if (localUser && localUser.uid) participantSet.add(localUser.uid);
+        if (fbUser && fbUser.uid) participantSet.add(fbUser.uid);
+
+        currentUsers = Math.max(1, participantSet.size);
+        currentTracks = defaultAvailableTracks + firestoreTrackCount + userGifts;
+
+        if (els.splashTotalUsers) els.splashTotalUsers.textContent = currentUsers.toLocaleString();
+        if (els.splashTotalTracks) els.splashTotalTracks.textContent = currentTracks.toLocaleString();
+      }).catch(err => {
+        console.warn('Real stats calculation fallback:', err);
+      });
     }
 
-    // 2. スプラッシュ画面タップ -> ムービー再生開始
+    // 2. スプラッシュ画面タップ -> ムービー再生開始 (ターンテーブルを一切映さず即座に動画へ移行)
     let isTransitioning = false;
 
     function handleSplashTap() {
@@ -2327,34 +2355,36 @@
         audioCtx.resume();
       }
 
-      // スプラッシュ画面をフェードアウト
+      // ムービーオーバーレイを即座に表示してターンテーブルの露出を完全遮断
+      if (els.giftMovieOverlay && els.openingVideo) {
+        els.giftMovieOverlay.style.display = 'flex';
+        els.giftMovieOverlay.style.opacity = '1';
+        els.openingVideo.currentTime = 0;
+
+        const playPromise = els.openingVideo.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(err => {
+            console.warn('Unmuted play blocked, retrying with muted fallback:', err);
+            els.openingVideo.muted = true;
+            els.openingVideo.play().catch(e => {
+              console.warn('Video playback notice (skipping to gallery):', e);
+              skipMovieToGallery();
+            });
+          });
+        }
+      }
+
+      // スプラッシュ画面を動画の前面でスムーズにフェードアウト
+      els.giftSplashOverlay.style.transition = 'opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1)';
       els.giftSplashOverlay.style.opacity = '0';
       els.giftSplashOverlay.style.pointerEvents = 'none';
 
       setTimeout(() => {
         els.giftSplashOverlay.style.display = 'none';
-
-        // ムービーオーバーレイを表示して再生
-        if (els.giftMovieOverlay && els.openingVideo) {
-          els.giftMovieOverlay.style.display = 'flex';
-          els.giftMovieOverlay.style.opacity = '1';
-          els.openingVideo.currentTime = 0;
-
-          const playPromise = els.openingVideo.play();
-          if (playPromise !== undefined) {
-            playPromise.catch(err => {
-              console.warn('Unmuted play blocked, retrying with muted fallback:', err);
-              els.openingVideo.muted = true;
-              els.openingVideo.play().catch(e => {
-                console.warn('Video playback notice (skipping to gallery):', e);
-                skipMovieToGallery();
-              });
-            });
-          }
-        } else {
+        if (!els.giftMovieOverlay || !els.openingVideo) {
           skipMovieToGallery();
         }
-      }, 400);
+      }, 280);
     }
 
     els.giftSplashOverlay.addEventListener('click', handleSplashTap);

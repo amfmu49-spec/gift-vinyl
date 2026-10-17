@@ -3150,7 +3150,7 @@ body {
 .gift-splash-overlay {
   position: fixed;
   inset: 0;
-  z-index: 5000;
+  z-index: 5200;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3158,13 +3158,13 @@ body {
   cursor: pointer;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
-  transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.5s;
+  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.3s;
 }
 
 .splash-backdrop-blur {
   position: absolute;
   inset: 0;
-  background-image: url('assets/gift_splash.png');
+  background-image: url('assets/gift_opening_art.jpg?v=20261017c');
   background-size: cover;
   background-position: center;
   filter: blur(36px) brightness(0.32) saturate(1.4);
