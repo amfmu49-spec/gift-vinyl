@@ -969,7 +969,17 @@
       const data = localStorage.getItem('amu_collection');
       if (data) {
         const arr = JSON.parse(data);
-        return arr.filter(item => item && item.id !== 'demo-track' && item.title !== 'Chasing The Eclipse');
+        const mySentTitles = getMySentTracks().map(t => (t.title || '').trim().toLowerCase());
+        const currentUid = getCurrentUserId();
+        return arr.filter(item => {
+          if (!item) return false;
+          if (item.id === 'demo-track' || item.title === 'Chasing The Eclipse') return false;
+          // 自分の投稿した音源はギフト棚に入れない（除外）
+          const t = (item.title || '').trim().toLowerCase();
+          if (mySentTitles.includes(t)) return false;
+          if (currentUid && item.creatorUid && item.creatorUid === currentUid) return false;
+          return true;
+        });
       }
     } catch (e) {}
     return [];
@@ -1525,82 +1535,114 @@
     }
   ];
 
-  // ギフト曲の配達（初回は必ず「涙を集めるバケツ」が届く。2回目以降はFirestoreの実曲またはプール）
+  // ギフト曲の配達（自分の投稿した音源以外の曲からランダムで配達）
   async function deliverGiftTrack() {
-    const hasNamidaBucket = state.collection.some(t => t.title === '涙を集めるバケツ');
-    let receivedItem;
+    const currentUid = getCurrentUserId();
+    const mySentTracks = getMySentTracks();
+    const mySentTitles = mySentTracks.map(t => (t.title || '').trim().toLowerCase());
+    const mySentIds = mySentTracks.map(t => t.id).filter(Boolean);
 
-    if (!hasNamidaBucket) {
-      // ユーザー要望: 「涙を集めるバケツ」はデフォルトではなくギフトで届く！
+    // 自分の投稿曲がもし誤って棚に入っていれば除外クリーニング
+    state.collection = state.collection.filter(item => {
+      if (!item) return false;
+      const t = (item.title || '').trim().toLowerCase();
+      if (mySentTitles.includes(t)) return false;
+      if (currentUid && item.creatorUid && item.creatorUid === currentUid) return false;
+      return true;
+    });
+    saveCollection();
+    updateGalleryCount();
+
+    const existingTitles = state.collection.map(c => (c.title || '').trim().toLowerCase());
+    const existingIds = state.collection.map(c => c.trackId || c.id).filter(Boolean);
+
+    let receivedItem = null;
+
+    // 1. まずFirestore上の実曲から、自分以外のユーザーが投稿した未受取の曲を探す
+    let firestoreCandidates = [];
+    if (fbDb) {
+      try {
+        const snap = await fbDb.collection('tracks').limit(50).get();
+        if (!snap.empty) {
+          snap.forEach(doc => {
+            const d = doc.data();
+            const docTitle = (d.title || '').trim().toLowerCase();
+            const isMyTrack = (currentUid && d.creatorUid && d.creatorUid === currentUid) ||
+                              mySentTitles.includes(docTitle) ||
+                              mySentIds.includes(doc.id);
+            const isAlreadyInCollection = existingTitles.includes(docTitle) || existingIds.includes(doc.id);
+
+            // 自分自身の曲は絶対に除外！かつ既に棚にある曲も除外
+            if (!isMyTrack && !isAlreadyInCollection) {
+              firestoreCandidates.push({
+                trackId: doc.id,
+                creatorUid: d.creatorUid || null,
+                title: d.title || '無題の贈り物',
+                artist: d.artist || '見知らぬ誰かからの贈り物',
+                coverUrl: d.coverUrl || 'assets/default_cover.jpg',
+                lyrics: d.lyrics || '',
+                audioUrl: d.audioUrl || null,
+                duration: 120,
+                durationStr: '02:00',
+              });
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('Firestore tracks search fallback:', e);
+      }
+    }
+
+    // 2. 他のユーザーのFirestore実曲があれば、その中からランダムに1曲選ぶ！
+    if (firestoreCandidates.length > 0) {
+      const picked = firestoreCandidates[Math.floor(Math.random() * firestoreCandidates.length)];
       receivedItem = {
-        id: 'gift-namida-bucket-' + Date.now(),
-        trackId: 'gift-namida-bucket',
-        creatorUid: 'official-gift-amu',
-        title: NAMIDA_BUCKET_TRACK.title,
-        artist: NAMIDA_BUCKET_TRACK.artist,
-        coverUrl: NAMIDA_BUCKET_TRACK.coverUrl,
-        lyrics: NAMIDA_BUCKET_TRACK.lyrics,
+        id: 'gift-received-' + Date.now(),
+        trackId: picked.trackId,
+        creatorUid: picked.creatorUid,
+        title: picked.title,
+        artist: picked.artist,
+        coverUrl: picked.coverUrl,
+        lyrics: picked.lyrics,
         sourceType: 'gift',
-        audioUrl: NAMIDA_BUCKET_TRACK.audioUrl,
-        localAudioUrl: NAMIDA_BUCKET_TRACK.localAudioUrl,
+        audioUrl: picked.audioUrl,
+        localAudioUrl: null,
         file: null,
-        durationStr: NAMIDA_BUCKET_TRACK.durationStr,
-        duration: NAMIDA_BUCKET_TRACK.duration,
+        durationStr: picked.durationStr,
+        duration: picked.duration,
       };
     } else {
-      // 1. Firestore の tracks から他のリスナーが放った曲を探す
-      let firestoreCandidates = [];
-      if (fbDb) {
-        try {
-          const snap = await fbDb.collection('tracks').limit(30).get();
-          if (!snap.empty) {
-            const currentUid = getCurrentUserId();
-            const existingTitles = state.collection.map(c => c.title);
-            snap.forEach(doc => {
-              const d = doc.data();
-              if (!existingTitles.includes(d.title)) {
-                firestoreCandidates.push({
-                  trackId: doc.id,
-                  creatorUid: d.creatorUid,
-                  title: d.title,
-                  artist: d.artist || '見知らぬ誰かからの贈り物',
-                  coverUrl: d.coverUrl || 'assets/default_cover.jpg',
-                  lyrics: d.lyrics || '',
-                  audioUrl: d.audioUrl || null,
-                  duration: 120,
-                  durationStr: '02:00',
-                });
-              }
-            });
-          }
-        } catch (e) {
-          console.warn('Firestore tracks search fallback:', e);
-        }
-      }
+      // 3. 他ユーザーの実曲がない場合、または既にすべて受取済みの場合はプールからランダム選定
+      // 「涙を集めるバケツ」がまだ棚になく、かつ自分の投稿曲でなければ最優先候補にする
+      const isNamidaMyTrack = mySentTitles.includes('涙を集めるバケツ');
+      const hasNamidaBucket = existingTitles.includes('涙を集めるバケツ');
 
-      if (firestoreCandidates.length > 0) {
-        const picked = firestoreCandidates[Math.floor(Math.random() * firestoreCandidates.length)];
+      if (!hasNamidaBucket && !isNamidaMyTrack) {
         receivedItem = {
-          id: 'gift-received-' + Date.now(),
-          trackId: picked.trackId,
-          creatorUid: picked.creatorUid,
-          title: picked.title,
-          artist: picked.artist,
-          coverUrl: picked.coverUrl,
-          lyrics: picked.lyrics,
+          id: 'gift-namida-bucket-' + Date.now(),
+          trackId: 'gift-namida-bucket',
+          creatorUid: 'official-gift-amu',
+          title: NAMIDA_BUCKET_TRACK.title,
+          artist: NAMIDA_BUCKET_TRACK.artist,
+          coverUrl: NAMIDA_BUCKET_TRACK.coverUrl,
+          lyrics: NAMIDA_BUCKET_TRACK.lyrics,
           sourceType: 'gift',
-          audioUrl: picked.audioUrl,
+          audioUrl: NAMIDA_BUCKET_TRACK.audioUrl,
+          localAudioUrl: NAMIDA_BUCKET_TRACK.localAudioUrl,
           file: null,
-          durationStr: picked.durationStr,
-          duration: picked.duration,
+          durationStr: NAMIDA_BUCKET_TRACK.durationStr,
+          duration: NAMIDA_BUCKET_TRACK.duration,
         };
       } else {
-        // 2. EXCHANGE_POOL から選定
-        const existingTitles = state.collection.map(c => c.title);
-        let candidates = EXCHANGE_POOL.filter(p => !existingTitles.includes(p.title));
-        if (candidates.length === 0) candidates = EXCHANGE_POOL;
-        const giftTrack = candidates[Math.floor(Math.random() * candidates.length)];
+        // EXCHANGE_POOL から自分の投稿曲を除外
+        let pool = EXCHANGE_POOL.filter(p => !mySentTitles.includes(p.title.trim().toLowerCase()));
+        if (pool.length === 0) pool = EXCHANGE_POOL;
 
+        // まだ棚にない曲を優先
+        let candidates = pool.filter(p => !existingTitles.includes(p.title.trim().toLowerCase()));
+        if (candidates.length === 0) candidates = pool;
+
+        const giftTrack = candidates[Math.floor(Math.random() * candidates.length)];
         receivedItem = {
           id: 'gift-received-' + Date.now(),
           trackId: null,
