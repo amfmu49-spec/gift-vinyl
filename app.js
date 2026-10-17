@@ -5,8 +5,8 @@
 (function () {
   'use strict';
 
-  // --- デモ曲用 LRC 歌詞 ---
-  const DEFAULT_LYRICS_LRC = `
+  // --- デモ曲「Chasing The Eclipse」用 LRC 歌詞 ---
+  const DEMO_LYRICS_LRC = `
 [00:00.00]♪ (Analog Needle Drops - Intro)
 [00:04.50]Neon lights are fading in the twilight sky
 [00:10.00]Cruising down the highway, watching stars drift by
@@ -23,6 +23,48 @@
 [01:25.00]♪ (Synthesizer Solo & Chill Out)
 [01:38.00]Fading gently as the dawn arrives...
 `;
+
+  // --- ギフト受取曲「涙を集めるバケツ」用 LRC 歌詞 ---
+  const NAMIDA_BUCKET_LYRICS_LRC = `
+[00:00.00]♪ (Acoustic Intro)
+[00:04.20]バケツを持って　歩いた道
+[00:09.80]今日も誰かの　涙をすくう
+[00:15.50]カナシミのあと　浮かぶ笑顔
+[00:21.20]それだけで僕は　満たされてた
+[00:27.50]♪
+[00:30.20]しずくの音が　ポツリポツリ
+[00:36.00]やさしい音に　包まれながら
+[00:41.80]自分の涙　どこかに置いて
+[00:47.50]それにも気づかず　進んでた
+[00:54.00]「ありがとう」って　笑ってくれる
+[00:59.80]その声だけが　僕のごほうび
+[01:05.50]でもある日ふと　気づいたんだ
+[01:11.20]胸の奥が　何も言わなかった
+[01:18.50]みんなの涙を　僕にちょうだい
+[01:24.50]それで笑顔になれるのなら
+[01:30.50]バケツの中は　カナシミで満ちて
+[01:36.50]まわりはいつも　輝いていた
+[01:43.00]いつからだろう　僕の心が
+[01:49.00]カナシミさえも　忘れてたこと
+[01:55.00]笑ってるのに　なんだか苦しくて
+[02:01.50]僕は僕を　置いてきた
+[02:09.50]♪ (Interlude)
+[02:22.50]泣いていいよって　言われたとき
+[02:28.50]僕はどうしていいか　分からなかった
+[02:34.50]「大丈夫？」の声が　あたたかくて
+[02:40.50]バケツの底に　光がさした
+[02:46.50]みんなの涙も　僕の涙も
+[02:52.50]どちらもきっと　大事なものさ
+[02:58.50]カナシミだけが　知ってる場所で
+[03:04.50]はじめて僕は　笑えたんだ
+[03:10.50]頼ることって　弱さじゃないね
+[03:16.50]誰かにそっと　手を伸ばすこと
+[03:22.50]ひとりきりじゃ　届かなかった
+[03:28.50]僕の心が　ここにある
+[03:38.00]♪ (Outro)
+`;
+
+  const DEFAULT_LYRICS_LRC = DEMO_LYRICS_LRC;
 
   // --- DOM Elements ---
   const els = {
@@ -138,35 +180,35 @@
     pitch: 1.0,
     crackleEnabled: true,
     currentTime: 0,
-    duration: 105, // デモ曲の長さ(秒)
-    audioSourceType: 'demo', // 'demo' or 'file'
+    duration: 92, // デモ曲の長さ(秒)
+    audioSourceType: 'demo', // 'demo' or 'gift' or 'file'
     audioUrl: null,
     lyrics: [],
     currentLyricIndex: -1,
     currentCollectionIndex: 0,
     currentTrackInfo: {
-      id: 'initial-namida-bucket',
-      title: '涙を集めるバケツ',
+      id: 'demo-track',
+      title: 'Chasing The Eclipse',
       artist: '見知らぬ誰かからの贈り物',
-      coverUrl: 'assets/covers/cover_4.jpg',
-      sourceType: 'gift',
-      audioUrl: 'https://amugift.b-cdn.net/tracks/namida_bucket.mp3',
-      localAudioUrl: 'assets/namida_bucket.mp3',
+      coverUrl: 'assets/default_cover.jpg',
+      sourceType: 'demo',
       file: null,
-      lyrics: null,
+      lyrics: DEMO_LYRICS_LRC,
+      duration: 92,
+      durationStr: '01:32',
     },
     // 一度再生したレコードのコレクション（棚に飾られる）
     collection: [
       {
-        id: 'initial-namida-bucket',
-        title: '涙を集めるバケツ',
+        id: 'demo-track',
+        title: 'Chasing The Eclipse',
         artist: '見知らぬ誰かからの贈り物',
-        coverUrl: 'assets/covers/cover_4.jpg',
-        sourceType: 'gift',
-        audioUrl: 'https://amugift.b-cdn.net/tracks/namida_bucket.mp3',
-        localAudioUrl: 'assets/namida_bucket.mp3',
+        coverUrl: 'assets/default_cover.jpg',
+        sourceType: 'demo',
         file: null,
-        durationStr: '03:56',
+        durationStr: '01:32',
+        duration: 92,
+        lyrics: DEMO_LYRICS_LRC,
       }
     ],
   };
@@ -178,6 +220,8 @@
   let crackleGain = null;
   let crackleSource = null;
   let audioElement = new Audio();
+  audioElement.crossOrigin = 'anonymous';
+  audioElement.preload = 'auto';
   let mediaElementSource = null;
   let demoSynthTimer = null;
   let animFrameId = null;
@@ -207,8 +251,10 @@
 
     // Connect audioElement (HTML5 Audio: iOS/Androidでマナーモードでも音が出る)
     try {
-      mediaElementSource = audioCtx.createMediaElementSource(audioElement);
-      mediaElementSource.connect(masterGain);
+      if (!mediaElementSource) {
+        mediaElementSource = audioCtx.createMediaElementSource(audioElement);
+        mediaElementSource.connect(masterGain);
+      }
     } catch (err) {
       console.warn('MediaElementSource error:', err);
     }
@@ -679,7 +725,7 @@
   // ==========================================================================
   function togglePlayPause() {
     initAudioContext();
-    if (audioCtx.state === 'suspended') {
+    if (audioCtx && audioCtx.state === 'suspended') {
       audioCtx.resume();
     }
 
@@ -691,6 +737,11 @@
   }
 
   function startPlayback() {
+    initAudioContext();
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+
     state.isPlaying = true;
     els.iconPlay.style.display = 'none';
     els.iconPause.style.display = 'block';
@@ -705,15 +756,13 @@
     }
 
     // HTML5 Audio 再生（iOS/Android スマホでマナーモードでも鳴る標準パイプライン）
-    if (audioElement.src) {
-      audioElement.play().catch(e => {
-        console.warn('Audio play error, falling back:', e);
-        if (state.audioSourceType === 'demo') {
-          scheduleDemoNotes();
-        }
-      });
-    } else if (state.audioSourceType === 'demo') {
-      scheduleDemoNotes();
+    if (audioElement && audioElement.src) {
+      const playPromise = audioElement.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(e => {
+          console.warn('Audio play error, falling back:', e);
+        });
+      }
     }
   }
 
@@ -727,15 +776,19 @@
     if (audioElement) {
       audioElement.pause();
     }
-    if (state.audioSourceType === 'demo') {
+    if (demoSynthTimer) {
       clearTimeout(demoSynthTimer);
     }
   }
 
   function seekToTime(targetSec) {
     state.currentTime = Math.min(Math.max(targetSec, 0), state.duration);
-    if (state.audioSourceType === 'file') {
-      audioElement.currentTime = state.currentTime;
+    if (audioElement && audioElement.src) {
+      try {
+        audioElement.currentTime = state.currentTime;
+      } catch (e) {
+        console.warn('Audio seek error:', e);
+      }
     }
     updateTimeDisplay();
     updateTonearmPosition();
@@ -752,12 +805,14 @@
       animFrameId = requestAnimationFrame(loop);
 
       if (state.isPlaying) {
-        // 時間進行の更新
-        if (state.audioSourceType === 'file') {
+        // 時間進行の更新: audioElementが存在する場合は常に実オーディオ時間と同期
+        if (audioElement && audioElement.src && !isNaN(audioElement.currentTime)) {
           state.currentTime = audioElement.currentTime;
-          state.duration = audioElement.duration || state.duration;
+          if (audioElement.duration && !isNaN(audioElement.duration) && audioElement.duration > 0) {
+            state.duration = audioElement.duration;
+          }
         } else {
-          // デモ曲のタイマー進行
+          // タイマーフォールバック
           state.currentTime += (1 / 60) * state.pitch;
           if (state.currentTime >= state.duration) {
             state.currentTime = 0; // ループ
@@ -970,16 +1025,34 @@
 
     if (item.sourceType === 'demo') {
       state.audioSourceType = 'demo';
-      state.duration = 105;
+      state.duration = item.duration || 92;
       state.currentTime = 0;
       els.trackTitle.textContent = item.title;
       els.trackArtist.textContent = item.artist || '見知らぬ誰かからの贈り物';
       els.sourceBadge.textContent = 'Preset Track';
       els.formatBadge.textContent = 'DEMO • 33⅓ RPM';
       applyCoverArtwork(item.coverUrl);
-      if (els.lyricsTextarea) els.lyricsTextarea.value = DEFAULT_LYRICS_LRC;
-      renderLyrics(parseLRC(DEFAULT_LYRICS_LRC));
-      startPlayback();
+      const lyricsLrc = item.lyrics || DEMO_LYRICS_LRC;
+      if (els.lyricsTextarea) els.lyricsTextarea.value = lyricsLrc;
+      renderLyrics(parseLRC(lyricsLrc));
+
+      if (demoAudioBlobUrl) {
+        audioElement.src = demoAudioBlobUrl;
+        audioElement.loop = true;
+        audioElement.onloadedmetadata = () => {
+          state.duration = audioElement.duration || item.duration || 92;
+          updateTimeDisplay();
+          startPlayback();
+        };
+        startPlayback();
+      } else {
+        renderDemoWav((blobUrl) => {
+          demoAudioBlobUrl = blobUrl;
+          audioElement.src = blobUrl;
+          audioElement.loop = true;
+          startPlayback();
+        });
+      }
     } else if (item.sourceType === 'gift') {
       state.audioSourceType = 'gift';
       state.currentTime = 0;
@@ -998,11 +1071,16 @@
 
       if (item.file) {
         handleAudioFile(item.file);
-      } else if (item.audioUrl) {
-        audioElement.src = item.audioUrl;
+      } else if (item.localAudioUrl || item.audioUrl) {
+        audioElement.src = item.localAudioUrl || item.audioUrl;
         audioElement.loop = true;
+        audioElement.onerror = () => {
+          if (item.audioUrl && audioElement.src !== item.audioUrl) {
+            audioElement.src = item.audioUrl;
+          }
+        };
         audioElement.onloadedmetadata = () => {
-          state.duration = audioElement.duration || 120;
+          state.duration = audioElement.duration || 239.92;
           updateTimeDisplay();
           startPlayback();
         };
@@ -1163,7 +1241,7 @@
 
     function applyPitchAndSpeed() {
       const speedMultiplier = state.pitch * (state.rpm / 33.33);
-      if (state.audioSourceType === 'file') {
+      if (audioElement) {
         audioElement.playbackRate = speedMultiplier;
       }
     }
@@ -1396,7 +1474,22 @@
     'assets/covers/cover_4.jpg',
   ];
 
+  const NAMIDA_BUCKET_TRACK = {
+    id: 'gift-namida-bucket',
+    title: '涙を集めるバケツ',
+    artist: '見知らぬ誰かからの贈り物',
+    coverUrl: 'assets/covers/cover_4.jpg',
+    lyrics: NAMIDA_BUCKET_LYRICS_LRC,
+    sourceType: 'gift',
+    audioUrl: 'https://amugift.b-cdn.net/tracks/namida_bucket.mp3',
+    localAudioUrl: 'assets/namida_bucket.mp3',
+    file: null,
+    durationStr: '03:59',
+    duration: 239.92,
+  };
+
   const EXCHANGE_POOL = [
+    NAMIDA_BUCKET_TRACK,
     {
       title: '雨の日のノクターン',
       artist: '見知らぬ誰かからの贈り物',
@@ -1432,6 +1525,63 @@
 [01:00.00]♪ 揺らめく光の粒`,
     }
   ];
+
+  // ギフト曲の配達（初回は必ず「涙を集めるバケツ」が届く）
+  function deliverGiftTrack() {
+    const hasNamidaBucket = state.collection.some(t => t.title === '涙を集めるバケツ');
+    let receivedItem;
+
+    if (!hasNamidaBucket) {
+      // ユーザー要望: 「涙を集めるバケツ」はデフォルトではなくギフトで届く！
+      receivedItem = {
+        id: 'gift-namida-bucket-' + Date.now(),
+        title: NAMIDA_BUCKET_TRACK.title,
+        artist: NAMIDA_BUCKET_TRACK.artist,
+        coverUrl: NAMIDA_BUCKET_TRACK.coverUrl,
+        lyrics: NAMIDA_BUCKET_TRACK.lyrics,
+        sourceType: 'gift',
+        audioUrl: NAMIDA_BUCKET_TRACK.audioUrl,
+        localAudioUrl: NAMIDA_BUCKET_TRACK.localAudioUrl,
+        file: null,
+        durationStr: NAMIDA_BUCKET_TRACK.durationStr,
+        duration: NAMIDA_BUCKET_TRACK.duration,
+      };
+    } else {
+      // 既に受け取り済みの場合は、EXCHANGE_POOL からまだ持っていない曲、またはランダム
+      const existingTitles = state.collection.map(c => c.title);
+      let candidates = EXCHANGE_POOL.filter(p => !existingTitles.includes(p.title));
+      if (candidates.length === 0) candidates = EXCHANGE_POOL;
+      const giftTrack = candidates[Math.floor(Math.random() * candidates.length)];
+
+      receivedItem = {
+        id: 'gift-received-' + Date.now(),
+        title: giftTrack.title,
+        artist: giftTrack.artist || '見知らぬ誰かからの贈り物',
+        coverUrl: giftTrack.coverUrl,
+        lyrics: giftTrack.lyrics,
+        sourceType: 'gift',
+        audioUrl: giftTrack.audioUrl || null,
+        localAudioUrl: giftTrack.localAudioUrl || null,
+        file: null,
+        durationStr: giftTrack.durationStr || '02:00',
+        duration: giftTrack.duration || 120,
+      };
+    }
+
+    // コレクション棚の先頭に追加
+    addToCollection(receivedItem);
+
+    // すぐにプレイヤーで再生開始（ターンテーブルに乗せられ、針が落ちて再生開始！）
+    playCollectionItem(0);
+
+    // 優しい通知トーストを表示
+    setTimeout(() => {
+      showGentleToast(
+        '風船に乗って音楽が届きました 🎈',
+        `見知らぬ誰かからの贈り物「${receivedItem.title}」があなたのターンテーブルへ届きました。`
+      );
+    }, 800);
+  }
 
   function getTodayKey() {
     const d = new Date();
@@ -1762,6 +1912,7 @@
           avatar: 'assets/user_walnut.jpg'
         });
         if (els.googleAuthModal) els.googleAuthModal.style.display = 'none';
+        if (els.giftModal) els.giftModal.style.display = 'flex';
       });
     }
     if (els.btnLogout) {
@@ -1781,7 +1932,6 @@
       els.btnOpenGiftModal.addEventListener('click', () => {
         // 未ログインの場合はGoogle登録モーダルを促す
         if (!getGoogleUser()) {
-          alert('音楽をGIFT（贈り合い）するには、まずGoogle登録を行ってください。');
           if (els.googleAuthModal) els.googleAuthModal.style.display = 'flex';
           return;
         }
@@ -1928,24 +2078,8 @@
           setTimeout(() => {
             if (els.exchangeOverlay) els.exchangeOverlay.style.display = 'none';
 
-            // 交換プールから誰かの1曲を受け取る
-            const giftTrack = EXCHANGE_POOL[Math.floor(Math.random() * EXCHANGE_POOL.length)];
-            const receivedItem = {
-              id: 'gift-received-' + Date.now(),
-              title: giftTrack.title,
-              artist: '見知らぬ誰かからの贈り物',
-              coverUrl: giftTrack.coverUrl,
-              lyrics: giftTrack.lyrics,
-              sourceType: 'gift',
-              audioUrl: uploadedCdnUrl || giftTrack.audioUrl || null,
-              file: null,
-              durationStr: '02:00',
-            };
-
-            // コレクション棚の先頭に追加
-            addToCollection(receivedItem);
-            // すぐにプレイヤーで再生開始
-            playCollectionItem(0);
+            // ギフト曲の配達（初回は「涙を集めるバケツ」が届く）
+            deliverGiftTrack();
           }, 3600);
         }
 
@@ -2078,27 +2212,8 @@
           setTimeout(() => {
             if (els.exchangeOverlay) els.exchangeOverlay.style.display = 'none';
 
-            // EXCHANGE_POOL からコレクションにまだない曲、またはランダムで取得
-            const existingTitles = state.collection.map(c => c.title);
-            let candidates = EXCHANGE_POOL.filter(p => !existingTitles.includes(p.title));
-            if (candidates.length === 0) candidates = EXCHANGE_POOL;
-
-            const giftTrack = candidates[Math.floor(Math.random() * candidates.length)];
-            const receivedItem = {
-              id: 'gift-received-' + Date.now(),
-              title: giftTrack.title,
-              artist: '見知らぬ誰かからの贈り物',
-              coverUrl: giftTrack.coverUrl,
-              lyrics: giftTrack.lyrics,
-              sourceType: 'gift',
-              file: null,
-              durationStr: '02:00',
-            };
-
-            // コレクションの先頭に追加
-            addToCollection(receivedItem);
-            // すぐにプレイヤーで再生開始
-            playCollectionItem(0);
+            // ギフト曲の配達（初回は「涙を集めるバケツ」が届く）
+            deliverGiftTrack();
           }, 3600);
         }
 
@@ -2163,28 +2278,34 @@
     window.addEventListener('orientationchange', () => setTimeout(fitCinemaToScreen, 120));
     setupEventListeners();
     initGiftSNS();
-    // デフォルト歌詞のセットアップ
-    if (els.lyricsTextarea) els.lyricsTextarea.value = DEFAULT_LYRICS_LRC;
-    renderLyrics(parseLRC(DEFAULT_LYRICS_LRC));
+
+    // デフォルト歌詞のセットアップ (Chasing The Eclipse)
+    if (els.lyricsTextarea) els.lyricsTextarea.value = DEMO_LYRICS_LRC;
+    renderLyrics(parseLRC(DEMO_LYRICS_LRC));
     updateTimeDisplay();
     els.btnToggleNoise.classList.add('active');
     els.crackleBadge.classList.add('active');
     updateGalleryCount();
     renderShelfGallery();
 
-    // 初期曲「涙を集めるバケツ」をプリロード (Bunny CDN & ローカルフォールバック)
-    const initialUrl = state.currentTrackInfo.audioUrl || state.currentTrackInfo.localAudioUrl;
-    audioElement.src = initialUrl;
-    audioElement.loop = true;
-    audioElement.onerror = () => {
-      console.warn('CDN fetch failed, falling back to local assets/namida_bucket.mp3');
-      audioElement.src = state.currentTrackInfo.localAudioUrl || 'assets/namida_bucket.mp3';
-    };
-    audioElement.onloadedmetadata = () => {
-      state.duration = audioElement.duration || 236;
-      updateTimeDisplay();
-    };
+    // デモ曲のオフラインWAVレンダリングを行いaudioElementにプリロード
+    renderDemoWav((blobUrl) => {
+      demoAudioBlobUrl = blobUrl;
+      if (state.audioSourceType === 'demo') {
+        audioElement.src = blobUrl;
+        audioElement.loop = true;
+        audioElement.onloadedmetadata = () => {
+          state.duration = audioElement.duration || 92;
+          updateTimeDisplay();
+        };
+      }
+    });
+
     applyCoverArtwork(state.currentTrackInfo.coverUrl);
+    els.trackTitle.textContent = state.currentTrackInfo.title;
+    els.trackArtist.textContent = state.currentTrackInfo.artist;
+    els.sourceBadge.textContent = 'Preset Track';
+    els.formatBadge.textContent = 'DEMO • 33⅓ RPM';
     updateCommentGiftButton();
   }
 
