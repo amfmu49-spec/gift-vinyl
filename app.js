@@ -1719,14 +1719,14 @@
       }
     }
 
-    // 2. 投稿モーダル内の残数テキスト反映
+    // 2. 投稿モーダル内の残数テキスト反映（音源・コメント合算）
     const modalQuotaText = document.getElementById('modalQuotaText');
     if (modalQuotaText) {
       if (remaining > 0) {
-        modalQuotaText.textContent = `残り ${remaining} / 2 曲`;
+        modalQuotaText.textContent = `残り ${remaining} / 2 回（音源・コメント合算）`;
         modalQuotaText.style.color = 'var(--accent-gold)';
       } else {
-        modalQuotaText.textContent = '本日終了 (0 / 2 曲)';
+        modalQuotaText.textContent = '本日終了 (0 / 2 回)';
         modalQuotaText.style.color = '#94a3b8';
       }
     }
@@ -1744,12 +1744,45 @@
         els.btnSubmitGift.disabled = true;
         els.btnSubmitGift.style.opacity = '0.55';
         els.btnSubmitGift.style.cursor = 'not-allowed';
-        if (span) span.textContent = '本日終了（音源GIFTは1日2曲まで）';
+        if (span) span.textContent = '本日終了（1日のGIFT上限2回に達しました）';
       } else {
         els.btnSubmitGift.disabled = false;
         els.btnSubmitGift.style.opacity = '1';
         els.btnSubmitGift.style.cursor = 'pointer';
         if (span) span.textContent = '🎁 この曲をGIFTする';
+      }
+    }
+
+    // 5. リスナー向け「コメントでギフト」カード＆ボタンの動的更新
+    const hasAnyTrack = state.collection && state.collection.length > 0;
+    const btnStartCommentGift = document.getElementById('btnStartCommentGift');
+    const listenerCardDesc = document.getElementById('listenerCardDesc');
+
+    if (btnStartCommentGift) {
+      if (remaining <= 0) {
+        btnStartCommentGift.disabled = true;
+        btnStartCommentGift.style.opacity = '0.55';
+        btnStartCommentGift.style.cursor = 'not-allowed';
+        btnStartCommentGift.innerHTML = '<span class="btn-icon">⏳</span><span>本日終了（1日のGIFT上限2回に達しました）</span>';
+      } else {
+        btnStartCommentGift.disabled = false;
+        btnStartCommentGift.style.opacity = '1';
+        btnStartCommentGift.style.cursor = 'pointer';
+        if (!hasAnyTrack) {
+          btnStartCommentGift.innerHTML = '<span class="btn-icon">🎈</span><span>最初の曲を受け取る（コメントでGIFT）</span>';
+        } else {
+          btnStartCommentGift.innerHTML = '<span class="btn-icon">💌</span><span>届いた曲にコメントして次の曲を受け取る</span>';
+        }
+      }
+    }
+
+    if (listenerCardDesc) {
+      if (remaining <= 0) {
+        listenerCardDesc.textContent = '本日のGIFT上限（合計2回）に達しました。明日また新しい音楽を受け取ることができます。';
+      } else if (!hasAnyTrack) {
+        listenerCardDesc.textContent = '棚に曲がありません。まずは風船に乗って最初の曲が届きます。その曲に感想（コメント）を届けると、次の曲がギフトされます。';
+      } else {
+        listenerCardDesc.textContent = '棚にある曲を聴いて感想（コメント）を作者へ贈りましょう。コメントを届けると、空から次の新しい曲がギフトされます（音源・コメント合算で1日2回まで）。';
       }
     }
   }
@@ -2155,6 +2188,11 @@
   function openCommentModal(optionalNotice) {
     if (!els.commentGiftModal) return;
 
+    if (getDailyGiftCount() >= 2) {
+      alert('本日のGIFT上限（1日合計2回まで）に達しています。明日また新しい音楽を受け取ることができます 🎈');
+      return;
+    }
+
     const curTrack = state.currentTrackInfo || (state.collection && state.collection[state.currentCollectionIndex]);
     const curTitle = curTrack ? curTrack.title : 'Chasing The Eclipse';
     const curArtist = curTrack ? (curTrack.artist || '見知らぬ誰かからの贈り物') : '見知らぬ誰かからの贈り物';
@@ -2340,7 +2378,7 @@
     if (els.btnSubmitGift) {
       els.btnSubmitGift.addEventListener('click', async () => {
         if (getDailyGiftCount() >= 2) {
-          alert('本日の音源GIFT上限（1日2曲まで）に達しています。明日また誰かへ届けてください。（コメントでのGIFTは引き続きご利用いただけます 🎈）');
+          alert('本日のGIFT上限（1日合計2回まで・音源とコメント合算）に達しています。明日また誰かへ届けてください 🎈');
           return;
         }
 
@@ -2462,6 +2500,11 @@
     // 8-0. モーダル内の「コメントでギフトする」ボタン（投稿曲を持っていないリスナー向け機能）
     if (els.btnStartCommentGift) {
       els.btnStartCommentGift.addEventListener('click', async () => {
+        if (getDailyGiftCount() >= 2) {
+          alert('本日のGIFT上限（1日合計2回まで）に達しています。明日また新しい音楽を受け取ることができます 🎈');
+          return;
+        }
+
         // GIFTスタジオモーダルを閉じる
         if (els.giftModal) els.giftModal.style.display = 'none';
 
@@ -2469,10 +2512,10 @@
         switchTab('player');
 
         const hasAnyTrack = state.collection && state.collection.length > 0;
-        const curTrack = state.currentTrackInfo || (hasAnyTrack ? state.collection[state.currentCollectionIndex] : null);
 
-        if (!hasAnyTrack || !curTrack) {
-          // まだ曲を1曲も持っていない場合：「まず曲が届く！」
+        // 【要件】先に曲が届くのはギャラリー（棚）に曲がない時だけ！
+        if (!hasAnyTrack) {
+          switchTab('player');
           if (els.exchangeOverlay) {
             els.exchangeOverlay.style.display = 'flex';
             if (els.exchangeTitle) els.exchangeTitle.textContent = '見知らぬ誰かからの音楽が、風船に乗って届きました... 🎈';
@@ -2488,8 +2531,8 @@
               await deliverGiftTrack();
 
               showGentleToast(
-                '曲が届きました！ 🎈',
-                'まずはこの曲を聴いてみましょう。聴いた後に「感想をGIFT」からコメントを贈ると、次の曲が空から届きます 💌'
+                '最初の曲が届きました！ 🎈',
+                '曲を聴いたあと、「感想をGIFT」からコメントを贈ると次の曲が届きます 💌'
               );
             }, 3600);
           } else {
@@ -2498,35 +2541,28 @@
           return;
         }
 
-        // 既に曲がある場合
-        const curId = curTrack.id;
-        if (!isTrackCommented(curId)) {
-          // 現在の曲にまだコメントしていない場合：コメントモーダルを開く
-          openCommentModal('この曲に感想（コメント）をGIFTすると、空から次の音楽が風船に乗って届きます 🎈');
-        } else {
-          // 既に現在の曲にコメント済みの場合は、次の新しい曲を届ける！
-          if (els.exchangeOverlay) {
-            els.exchangeOverlay.style.display = 'flex';
-            if (els.exchangeTitle) els.exchangeTitle.textContent = '感想を贈ってくれたあなたへ、次の音楽が届きます... 🎈';
-            if (els.exchangeDesc) els.exchangeDesc.textContent = '空から新しいレコードが舞い降ります';
+        // 【要件】それ以降（棚に曲がある時）は、楽曲にコメントしてからもらえる仕様！
+        // 先に曲を配ることは絶対にせず、プレイヤーで曲へのコメントを促す
+        switchTab('player');
 
-            setTimeout(async () => {
-              if (els.exchangeOverlay) els.exchangeOverlay.style.display = 'none';
-              await deliverGiftTrack();
-              showGentleToast(
-                '次の曲が届きました！ 🎈',
-                'この曲にも感想をGIFTすると、また次の新しい曲が空から届きます 💌'
-              );
-            }, 2500);
-          } else {
-            await deliverGiftTrack();
-          }
+        // 棚に未コメントの曲があればそれを優先的に選択
+        const uncommentedIndex = state.collection.findIndex(t => !isTrackCommented(t.id));
+        if (uncommentedIndex !== -1 && uncommentedIndex !== state.currentCollectionIndex) {
+          playCollectionItem(uncommentedIndex);
         }
+
+        setTimeout(() => {
+          openCommentModal('この曲に感想（コメント）をGIFTすると、空から次の音楽が届きます 🎈（1日合計2回まで）');
+        }, 200);
       });
     }
 
     if (els.btnOpenCommentModal) {
       els.btnOpenCommentModal.addEventListener('click', () => {
+        if (getDailyGiftCount() >= 2) {
+          alert('本日のGIFT上限（1日合計2回まで）に達しています。明日また新しい音楽を受け取ることができます 🎈');
+          return;
+        }
         openCommentModal();
       });
     }
@@ -2543,13 +2579,20 @@
       });
     }
 
-    // 感想GIFT送信ボタン
+    // 感想GIFT送信ボタン（【要件】コメントを投稿して初めて次の曲がもらえる！）
     if (els.btnSubmitComment) {
       els.btnSubmitComment.addEventListener('click', () => {
         const commentText = els.commentTextInput ? els.commentTextInput.value.trim() : '';
         if (!commentText) {
           alert('作者へ届ける感想を一言入力してください 🎈');
           if (els.commentTextInput) els.commentTextInput.focus();
+          return;
+        }
+
+        // 【要件】1日合計2回の上限チェック！（音源投稿・コメントGIFT合算で2回まで）
+        if (getDailyGiftCount() >= 2) {
+          alert('本日のGIFT上限（1日合計2回まで）に達しています。明日またご参加ください 🎈');
+          if (els.commentGiftModal) els.commentGiftModal.style.display = 'none';
           return;
         }
 
@@ -2560,7 +2603,10 @@
         // 1. コメント済みとして登録
         markTrackCommented(curId);
 
-        // 2. 届いた手紙（記録）に追加 ＆ Firestore へ送信
+        // 2. 1日のGIFT回数をカウントアップ！（音源・コメント合算で2回まで）
+        incrementDailyGiftCount();
+
+        // 3. 届いた手紙（記録）に追加 ＆ Firestore へ送信
         saveLetterNotification({
           id: 'letter-comment-' + Date.now(),
           timestamp: 'たった今',
@@ -2585,14 +2631,15 @@
           }
         }
 
-        // 3. モーダルを閉じ、フォームをリセット
+        // 4. モーダルを閉じ、フォームをリセット
         if (els.commentGiftModal) els.commentGiftModal.style.display = 'none';
         if (els.commentTextInput) els.commentTextInput.value = '';
 
-        // 4. ボタン表示を更新
+        // 5. ボタン表示とクォータを更新
         updateCommentGiftButton();
+        updateGiftQuotaBadge();
 
-        // 5. 交換演出アニメーション
+        // 6. 交換演出アニメーション（【要件】コメントした後に次の曲が届く！）
         if (els.exchangeOverlay) {
           els.exchangeOverlay.style.display = 'flex';
           if (els.exchangeTitle) els.exchangeTitle.textContent = 'あなたの温かい言葉を風船につけて、空へ放ちました... 🎈';
@@ -2603,21 +2650,22 @@
             if (els.exchangeDesc) els.exchangeDesc.textContent = '届いたレコードに針を落とします';
           }, 1800);
 
-          setTimeout(() => {
+          setTimeout(async () => {
             if (els.exchangeOverlay) els.exchangeOverlay.style.display = 'none';
 
-            // ギフト曲の配達（感想のお礼に次の曲が届く！）
-            deliverGiftTrack();
+            // ギフト曲の配達（コメントのお礼に次の曲が届く！）
+            await deliverGiftTrack();
           }, 3600);
         } else {
           deliverGiftTrack();
         }
 
-        // 6. 5秒後に優しい通知トースト
+        // 7. 5秒後に優しい通知トースト
         setTimeout(() => {
+          const remaining = Math.max(0, 2 - getDailyGiftCount());
           showGentleToast(
             '風船に乗った感想が作者へ届きました 🎈',
-            `風船に乗せたあなたの温かい言葉が、「${curTitle}」の作者のもとへ届き、空から次の新しい音楽が舞い降りました。`
+            `「${curTitle}」の作者へ言葉が届き、返礼として空から次の音楽が舞い降りました。（本日の残りGIFT可能: ${remaining}/2回）`
           );
         }, 5500);
       });

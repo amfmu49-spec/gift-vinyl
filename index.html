@@ -395,7 +395,7 @@
         <div class="modal-title-group">
           <div class="gift-badge-header">🎁 GIFT STUDIO</div>
           <h3>あなたの音楽を、見知らぬ誰かへ届ける</h3>
-          <p>1日2曲まで。あなたが1曲GIFTすると、世界の誰かの1曲があなたにGIFTされます。</p>
+          <p>1日合計2回まで（音源・コメント合算）。あなたが1回GIFTすると、世界の誰かの1曲があなたにGIFTされます。</p>
         </div>
         <button class="modal-close" id="btnCloseGiftModal">&times;</button>
       </div>
@@ -405,7 +405,7 @@
         <div class="gift-quota-banner">
           <div class="quota-text">
             <span>本日のGIFT可能回数</span>
-            <strong id="modalQuotaText">残り 2 / 2 曲</strong>
+            <strong id="modalQuotaText">残り 2 / 2 回（音源・コメント合算）</strong>
           </div>
           <div class="quota-pill-dots">
             <span class="quota-dot active" id="quotaDot1"></span>
@@ -422,11 +422,11 @@
           <div class="lc-content">
             <div class="lc-text">
               <h4 class="lc-title">コメントでギフトする</h4>
-              <p class="lc-desc">曲の音源を持っていなくても大丈夫です。まず誰かの曲が届き、その曲に感想（コメント）を届けると次の曲がギフトされます。</p>
+              <p class="lc-desc" id="listenerCardDesc">曲の音源を持っていなくても大丈夫です。まず誰かの曲が届き、その曲に感想（コメント）を届けると次の曲がギフトされます。</p>
             </div>
             <button type="button" class="btn-start-comment-gift" id="btnStartCommentGift">
               <span class="btn-icon">💌</span>
-              <span>コメントでギフトする（曲を受け取る）</span>
+              <span>届いた曲にコメントして次の曲を受け取る</span>
             </button>
           </div>
         </div>
@@ -552,7 +552,7 @@
         <div class="modal-title-group">
           <div class="gift-badge-header">LETTER OF APPRECIATION</div>
           <h3>言葉のGIFTを届ける</h3>
-          <p>この曲の作者へ感想を贈りましょう。あなたの言葉が届くと、世界の誰かから次の音楽がGIFTされます。</p>
+          <p>この曲の作者へ感想を贈りましょう。あなたの言葉が届くと、世界の誰かから次の音楽がGIFTされます。（1日合計2回まで・音源と合算）</p>
         </div>
         <button class="modal-close" id="btnCloseCommentModal">&times;</button>
       </div>
