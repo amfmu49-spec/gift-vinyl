@@ -206,10 +206,7 @@
   let analyser = null;
   let crackleGain = null;
   let crackleSource = null;
-  let audioElement = new Audio();
-  audioElement.crossOrigin = 'anonymous';
-  audioElement.preload = 'auto';
-  let mediaElementSource = null;
+  let audioElement = null;
   let demoSynthTimer = null;
   let animFrameId = null;
 
@@ -219,32 +216,35 @@
   const ARM_LEAD_OUT_ANGLE = 34;   // レコード盤内周の終了位置 (度)
 
   // ==========================================================================
-  // 1. Web Audio API 初期化 & スマホ用オーディオアンロック
+  // 1. バックグラウンド再生 & オーディオ初期化 (iOS/Android/Desktop対応)
   // ==========================================================================
+  function initAudioElement() {
+    if (audioElement) return audioElement;
+    audioElement = document.getElementById('mainAudioElement') || new Audio();
+    audioElement.crossOrigin = 'anonymous';
+    audioElement.preload = 'auto';
+    audioElement.playsInline = true;
+    audioElement.volume = Math.max(0, Math.min(1, state.volume));
+    audioElement.muted = state.isMuted;
+    setupAudioElementEvents();
+    return audioElement;
+  }
+
   function initAudioContext() {
+    initAudioElement();
     if (audioCtx) return;
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     audioCtx = new AudioContextClass();
 
-    // Master Gain
+    // Master Gain (アナログクラックル音量制御用)
     masterGain = audioCtx.createGain();
     masterGain.gain.setValueAtTime(state.volume, audioCtx.currentTime);
 
-    // Analyser Node for Visualizer
+    // Analyser Node (光量ビジュアライザー用)
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 64;
     masterGain.connect(analyser);
     analyser.connect(audioCtx.destination);
-
-    // Connect audioElement (HTML5 Audio: iOS/Androidでマナーモードでも音が出る)
-    try {
-      if (!mediaElementSource) {
-        mediaElementSource = audioCtx.createMediaElementSource(audioElement);
-        mediaElementSource.connect(masterGain);
-      }
-    } catch (err) {
-      console.warn('MediaElementSource error:', err);
-    }
 
     // Setup Crackle Noise Generator
     setupVinylCrackle();
@@ -309,6 +309,203 @@
       crackleSource.start();
     } catch(e) {}
   }
+
+  // ==========================================================================
+  // 1-1. バックグラウンド再生 & Media Session API (ロック画面・通知操作対応)
+  // ==========================================================================
+  function setupAudioElementEvents() {
+    if (!audioElement) return;
+
+    audioElement.addEventListener('timeupdate', () => {
+      if (!isNaN(audioElement.currentTime)) {
+        state.currentTime = audioElement.currentTime;
+        if (audioElement.duration && !isNaN(audioElement.duration) && audioElement.duration > 0) {
+          state.duration = audioElement.duration;
+        }
+        updateTimeDisplay();
+        updateTonearmPosition();
+        updateLyricsHighlight(state.currentTime);
+        updateMediaSessionPositionState();
+      }
+    });
+
+    audioElement.addEventListener('play', () => {
+      state.isPlaying = true;
+      if (els.iconPlay) els.iconPlay.style.display = 'none';
+      if (els.iconPause) els.iconPause.style.display = 'block';
+      startTurntableVisuals();
+      updateMediaSession();
+    });
+
+    audioElement.addEventListener('pause', () => {
+      state.isPlaying = false;
+      if (els.iconPlay) els.iconPlay.style.display = 'block';
+      if (els.iconPause) els.iconPause.style.display = 'none';
+      stopTurntableVisuals();
+      updateMediaSessionPlaybackState();
+    });
+
+    audioElement.addEventListener('ended', () => {
+      if (state.collection && state.collection.length > 1) {
+        // コレクション内の次の曲へ連続再生（棚の巡回）
+        playNextTrack();
+      } else {
+        seekToTime(0);
+        startPlayback();
+        const curTrack = state.currentTrackInfo || (state.collection && state.collection[state.currentCollectionIndex]);
+        const curId = curTrack ? curTrack.id : null;
+        if (curId && !isTrackCommented(curId)) {
+          showGentleToast(
+            '曲の再生が終わりました 🎈',
+            `「${curTrack.title}」の作者へ感想（コメント）をGIFTしてみませんか？言葉を贈ると、空から次の音楽が届きます 💌`
+          );
+        }
+      }
+    });
+
+    audioElement.addEventListener('loadedmetadata', () => {
+      if (audioElement.duration && !isNaN(audioElement.duration) && audioElement.duration > 0) {
+        state.duration = audioElement.duration;
+        updateTimeDisplay();
+      }
+      updateMediaSession();
+    });
+  }
+
+  function updateMediaSession() {
+    if (!('mediaSession' in navigator)) return;
+
+    const curTrack = state.currentTrackInfo || (state.collection && state.collection[state.currentCollectionIndex]);
+    const title = curTrack ? curTrack.title : (els.trackTitle ? els.trackTitle.textContent : 'GIFT Vinyl');
+    const artist = curTrack ? (curTrack.artist || '見知らぬ誰かからの贈り物') : '見知らぬ誰かからの贈り物';
+    const cover = curTrack && curTrack.coverUrl ? curTrack.coverUrl : 'assets/default_cover.jpg';
+
+    let absCoverUrl = cover;
+    try {
+      absCoverUrl = new URL(cover, window.location.href).href;
+    } catch (e) {}
+
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: title,
+        artist: artist,
+        album: 'GIFT - Analog Record Player',
+        artwork: [
+          { src: absCoverUrl, sizes: '96x96', type: 'image/jpeg' },
+          { src: absCoverUrl, sizes: '128x128', type: 'image/jpeg' },
+          { src: absCoverUrl, sizes: '192x192', type: 'image/jpeg' },
+          { src: absCoverUrl, sizes: '256x256', type: 'image/jpeg' },
+          { src: absCoverUrl, sizes: '384x384', type: 'image/jpeg' },
+          { src: absCoverUrl, sizes: '512x512', type: 'image/jpeg' },
+        ]
+      });
+    } catch (e) {
+      console.warn('MediaSession metadata error:', e);
+    }
+
+    updateMediaSessionPlaybackState();
+    updateMediaSessionPositionState();
+  }
+
+  function updateMediaSessionPlaybackState() {
+    if (!('mediaSession' in navigator)) return;
+    try {
+      navigator.mediaSession.playbackState = state.isPlaying ? 'playing' : 'paused';
+    } catch (e) {}
+  }
+
+  function updateMediaSessionPositionState() {
+    if (!('mediaSession' in navigator) || !('setPositionState' in navigator.mediaSession)) return;
+    if (audioElement && audioElement.duration && !isNaN(audioElement.duration) && audioElement.duration > 0) {
+      try {
+        navigator.mediaSession.setPositionState({
+          duration: Math.max(0, audioElement.duration),
+          playbackRate: audioElement.playbackRate || 1.0,
+          position: Math.min(Math.max(0, audioElement.currentTime || 0), audioElement.duration)
+        });
+      } catch (e) {}
+    }
+  }
+
+  function playPreviousTrack() {
+    if (!state.collection || state.collection.length === 0) {
+      seekToTime(0);
+      return;
+    }
+    if (state.currentTime > 3) {
+      seekToTime(0);
+      return;
+    }
+    const prevIdx = (state.currentCollectionIndex - 1 + state.collection.length) % state.collection.length;
+    playCollectionItem(prevIdx);
+  }
+
+  function playNextTrack() {
+    if (!state.collection || state.collection.length === 0) {
+      seekToTime(0);
+      return;
+    }
+    const nextIdx = (state.currentCollectionIndex + 1) % state.collection.length;
+    playCollectionItem(nextIdx);
+  }
+
+  function initMediaSessionHandlers() {
+    if (!('mediaSession' in navigator)) return;
+
+    const actionHandlers = [
+      ['play', () => {
+        startPlayback();
+      }],
+      ['pause', () => {
+        pausePlayback();
+      }],
+      ['previoustrack', () => {
+        playPreviousTrack();
+      }],
+      ['nexttrack', () => {
+        playNextTrack();
+      }],
+      ['seekto', (details) => {
+        if (details.seekTime !== undefined) {
+          seekToTime(details.seekTime);
+        }
+      }],
+      ['seekbackward', (details) => {
+        const offset = details.seekOffset || 10;
+        seekToTime(state.currentTime - offset);
+      }],
+      ['seekforward', (details) => {
+        const offset = details.seekOffset || 10;
+        seekToTime(state.currentTime + offset);
+      }],
+      ['stop', () => {
+        pausePlayback();
+        seekToTime(0);
+      }],
+    ];
+
+    actionHandlers.forEach(([action, handler]) => {
+      try {
+        navigator.mediaSession.setActionHandler(action, handler);
+      } catch (e) {}
+    });
+  }
+
+  // 画面可視性（タブ切り替え・画面ロック復帰）の監視
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      if (audioCtx && audioCtx.state === 'suspended' && state.isPlaying) {
+        audioCtx.resume().catch(() => {});
+      }
+      if (audioElement && !isNaN(audioElement.currentTime)) {
+        state.currentTime = audioElement.currentTime;
+        updateTimeDisplay();
+        updateTonearmPosition();
+        updateLyricsHighlight(state.currentTime);
+        updateMediaSessionPositionState();
+      }
+    }
+  });
 
   // ==========================================================================
   // 2. 高音質デモ曲のオフラインWAVレンダリング (スマホ対応)
@@ -748,14 +945,18 @@
 
     startTurntableVisuals();
 
-    // HTML5 Audio 再生（iOS/Android スマホでマナーモードでも鳴る標準パイプライン）
+    // HTML5 Audio 再生（iOS/Android バックグラウンド再生対応）
     if (audioElement && audioElement.src) {
       const playPromise = audioElement.play();
       if (playPromise !== undefined) {
-        playPromise.catch(e => {
+        playPromise.then(() => {
+          updateMediaSession();
+        }).catch(e => {
           console.warn('Audio play error, falling back:', e);
         });
       }
+    } else {
+      updateMediaSession();
     }
 
     // 再生イベントを記録＆送信者への通知をトリガー！
@@ -775,6 +976,7 @@
     if (demoSynthTimer) {
       clearTimeout(demoSynthTimer);
     }
+    updateMediaSessionPlaybackState();
   }
 
   function seekToTime(targetSec) {
@@ -789,14 +991,13 @@
     updateTimeDisplay();
     updateTonearmPosition();
     updateLyricsHighlight(state.currentTime);
+    updateMediaSessionPositionState();
   }
 
   // ==========================================================================
   // 6. メイン再生ループ & オーディオビジュアライザー
   // ==========================================================================
   function startVisualizerLoop() {
-    const dataArray = new Uint8Array(analyser.frequencyBinCount);
-
     function loop() {
       animFrameId = requestAnimationFrame(loop);
 
@@ -819,14 +1020,9 @@
         updateTonearmPosition();
         updateLyricsHighlight(state.currentTime);
 
-        // オーディオビジュアライザーの光量計算
-        analyser.getByteFrequencyData(dataArray);
-        let sum = 0;
-        for (let i = 0; i < dataArray.length; i++) {
-          sum += dataArray[i];
-        }
-        const avg = sum / dataArray.length; // 0 〜 255
-        const intensity = avg / 255;
+        // オーディオビジュアライザーの光量計算（アナログレコード盤の美しい呼吸パルス）
+        const pulse = Math.sin(state.currentTime * 4.2) * 0.35 + Math.cos(state.currentTime * 2.1) * 0.25 + 0.6;
+        const intensity = pulse * state.volume * 0.75;
 
         if (intensity > 0.08) {
           els.visualHalo.classList.add('active');
@@ -902,21 +1098,9 @@
       state.duration = audioElement.duration;
       state.currentTime = 0;
       updateTimeDisplay();
+      updateMediaSession();
       startPlayback();
       renderShelfGallery();
-    };
-
-    audioElement.onended = () => {
-      pausePlayback();
-      seekToTime(0);
-      const curTrack = state.currentTrackInfo || (state.collection && state.collection[state.currentCollectionIndex]);
-      const curId = curTrack ? curTrack.id : null;
-      if (curId && !isTrackCommented(curId)) {
-        showGentleToast(
-          '曲の再生が終わりました 🎈',
-          `「${curTrack.title}」の作者へ感想（コメント）をGIFTしてみませんか？言葉を贈ると、空から次の音楽が届きます 💌`
-        );
-      }
     };
   }
 
@@ -1084,8 +1268,9 @@
     if (item.file) {
       handleAudioFile(item.file);
     } else if (item.localAudioUrl || item.audioUrl) {
+      initAudioElement();
       audioElement.src = item.localAudioUrl || item.audioUrl;
-      audioElement.loop = true;
+      audioElement.loop = (!state.collection || state.collection.length <= 1);
       audioElement.onerror = () => {
         if (item.audioUrl && audioElement.src !== item.audioUrl) {
           audioElement.src = item.audioUrl;
@@ -1094,8 +1279,10 @@
       audioElement.onloadedmetadata = () => {
         state.duration = audioElement.duration || 239.92;
         updateTimeDisplay();
+        updateMediaSession();
         startPlayback();
       };
+      updateMediaSession();
       startPlayback();
     } else {
       // フォールバック
@@ -1202,6 +1389,10 @@
         if (masterGain && audioCtx) {
           masterGain.gain.setValueAtTime(state.volume, audioCtx.currentTime);
         }
+        if (audioElement) {
+          audioElement.volume = Math.max(0, Math.min(1, state.volume));
+          audioElement.muted = state.isMuted;
+        }
       });
     }
 
@@ -1213,6 +1404,10 @@
         const targetVol = state.isMuted ? 0 : state.volume;
         if (masterGain && audioCtx) {
           masterGain.gain.setValueAtTime(targetVol, audioCtx.currentTime);
+        }
+        if (audioElement) {
+          audioElement.muted = state.isMuted;
+          audioElement.volume = Math.max(0, Math.min(1, state.volume));
         }
         if (els.volumeFill) els.volumeFill.style.width = state.isMuted ? '0%' : `${state.volume * 100}%`;
       });
@@ -2873,6 +3068,8 @@
     fitCinemaToScreen();
     window.addEventListener('resize', fitCinemaToScreen);
     window.addEventListener('orientationchange', () => setTimeout(fitCinemaToScreen, 120));
+    initAudioElement();
+    initMediaSessionHandlers();
     setupEventListeners();
     initGiftSNS();
     initOpeningFlow();
