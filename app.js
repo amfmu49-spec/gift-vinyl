@@ -2144,39 +2144,55 @@
    */
   let unsubscribeLetters = null;
   function listenToUserLetters(uid) {
-    if (!fbDb) return;
+    if (!fbDb || !uid) return;
     if (unsubscribeLetters) unsubscribeLetters();
 
     try {
+      const uids = [uid];
+      const localUid = localStorage.getItem('amu_user_uid');
+      if (localUid && !uids.includes(localUid)) {
+        uids.push(localUid);
+      }
+
+      // 【要件】感想コメントはその曲をギフトした人のもとにのみ届くよう、toUserId で厳密にフィルタリング
       unsubscribeLetters = fbDb.collection('letters')
-        .orderBy('createdAt', 'desc')
-        .limit(20)
+        .where('toUserId', 'in', uids)
+        .limit(30)
         .onSnapshot((snapshot) => {
           snapshot.docChanges().forEach((change) => {
             if (change.type === 'added') {
               const data = change.doc.data();
-              // 自分が送ったものでない場合、通知トーストを表示
-              if (fbUser && data.fromUserId !== fbUser.uid) {
-                showGentleToast(
-                  '風船に乗った感想が届きました 🎈',
-                  `「${data.trackTitle || '曲'}」へ感想が届きました：「${(data.body || '').slice(0, 30)}...」`
-                );
+              // 自分がギフトした楽曲宛てで、かつ自分以外のリスナーからの感想のみ通知トーストを表示
+              if (uids.includes(data.toUserId) && !uids.includes(data.fromUserId)) {
+                const notifKey = `amu_seen_letter_${change.doc.id}`;
+                if (!localStorage.getItem(notifKey)) {
+                  localStorage.setItem(notifKey, '1');
+                  showGentleToast(
+                    '風船に乗った感想が届きました 🎈',
+                    `あなたが贈った「${data.trackTitle || '曲'}」へ感想が届きました：「${(data.body || '').slice(0, 35)}...」`
+                  );
+                }
               }
             }
           });
 
-          // 手紙モーダル用にマッピング
+          // 手紙モーダル用にマッピング（自分宛てに届いた手紙のみ）
           const onlineLetters = [];
           snapshot.forEach(doc => {
             const d = doc.data();
+            const createdAtMs = d.createdAt && d.createdAt.seconds ? d.createdAt.seconds * 1000 : Date.now();
             onlineLetters.push({
               id: doc.id,
-              timestamp: d.createdAt ? new Date(d.createdAt.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'たった今',
-              title: `「${d.trackTitle || '曲'}」への感想 🎈`,
+              createdAtMs: createdAtMs,
+              timestamp: d.createdAt ? new Date(createdAtMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'たった今',
+              title: `あなたの「${d.trackTitle || '曲'}」への感想 🎈`,
               body: `${d.fromUserName || '見知らぬリスナー'} より：「${d.body}」`,
               read: false,
             });
           });
+
+          // 新着順にソート
+          onlineLetters.sort((a, b) => b.createdAtMs - a.createdAtMs);
 
           if (onlineLetters.length > 0) {
             localStorage.setItem('amu_letters', JSON.stringify(onlineLetters));
@@ -2199,10 +2215,15 @@
     if (unsubscribeNotifications) unsubscribeNotifications();
 
     try {
+      const uids = [uid];
+      const localUid = localStorage.getItem('amu_user_uid');
+      if (localUid && !uids.includes(localUid)) {
+        uids.push(localUid);
+      }
+
       unsubscribeNotifications = fbDb.collection('notifications')
-        .where('toUserId', '==', uid)
-        .orderBy('timestamp', 'desc')
-        .limit(20)
+        .where('toUserId', 'in', uids)
+        .limit(25)
         .onSnapshot((snapshot) => {
           snapshot.docChanges().forEach((change) => {
             if (change.type === 'added') {
@@ -2774,9 +2795,9 @@
       });
     }
 
-    // 感想GIFT送信ボタン（【要件】コメントを投稿して初めて次の曲がもらえる！）
+    // 感想GIFT送信ボタン（【要件】コメントを投稿して初めて次の曲がもらえる＆ギフトした人のもとへ届く）
     if (els.btnSubmitComment) {
-      els.btnSubmitComment.addEventListener('click', () => {
+      els.btnSubmitComment.addEventListener('click', async () => {
         const commentText = els.commentTextInput ? els.commentTextInput.value.trim() : '';
         if (!commentText) {
           alert('作者へ届ける感想を一言入力してください 🎈');
@@ -2801,26 +2822,57 @@
         // 2. 1日のGIFT回数をカウントアップ！（音源・コメント合算で2回まで）
         incrementDailyGiftCount();
 
-        // 3. 届いた手紙（記録）に追加 ＆ Firestore へ送信
+        // 3. 【要件】感想コメントが届くのはその曲をギフトした人のもとにする！
+        let targetCreatorUid = curTrack ? curTrack.creatorUid : null;
+        if (!targetCreatorUid && fbDb) {
+          try {
+            // trackId から検索
+            if (curTrack && curTrack.trackId) {
+              const docSnap = await fbDb.collection('tracks').doc(curTrack.trackId).get();
+              if (docSnap.exists) {
+                targetCreatorUid = docSnap.data().creatorUid || null;
+              }
+            }
+            // タイトルから検索
+            if (!targetCreatorUid && curTitle) {
+              const querySnap = await fbDb.collection('tracks').where('title', '==', curTitle).limit(1).get();
+              if (!querySnap.empty) {
+                targetCreatorUid = querySnap.docs[0].data().creatorUid || null;
+              }
+            }
+          } catch (e) {
+            console.warn('Track creator lookup notice:', e);
+          }
+        }
+        if (!targetCreatorUid) {
+          targetCreatorUid = 'official-gift-amu';
+        }
+
+        const currentUid = getCurrentUserId();
+        const currentUserName = fbUser ? (fbUser.displayName || '見知らぬリスナー') : '見知らぬリスナー';
+
+        // 送信者自身の履歴記録（ローカル）
         saveLetterNotification({
           id: 'letter-comment-' + Date.now(),
           timestamp: 'たった今',
           title: `「${curTitle}」へ風船の感想を届けました`,
-          body: `あなたが風船に託した言葉:「${commentText}」\n世界のどこかで、作者が温かい気持ちでこの風船を受け取りました。`,
+          body: `あなたが風船に託した言葉:「${commentText}」\n風に乗って、この曲をギフトした作者のもとへ届きました。`,
           read: true
         });
 
+        // Firestoreのlettersへ送信（【要件】toUserIdにその曲をギフトした人のUIDを設定）
         if (fbDb) {
           try {
-            fbDb.collection('letters').add({
+            await fbDb.collection('letters').add({
               trackTitle: curTitle,
               trackId: curId,
-              fromUserId: fbUser ? fbUser.uid : 'guest',
-              fromUserName: fbUser ? (fbUser.displayName || '見知らぬリスナー') : '見知らぬリスナー',
+              toUserId: targetCreatorUid, // その曲をギフトした人のもとにのみ届く
+              fromUserId: currentUid,
+              fromUserName: currentUserName,
               body: commentText,
               createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             });
-            console.log('Firestore: Letter added successfully');
+            console.log('Firestore: Letter successfully addressed to track creator:', targetCreatorUid);
           } catch (err) {
             console.warn('Firestore letter write error:', err);
           }
@@ -2838,7 +2890,7 @@
         if (els.exchangeOverlay) {
           els.exchangeOverlay.style.display = 'flex';
           if (els.exchangeTitle) els.exchangeTitle.textContent = 'あなたの温かい言葉を風船につけて、空へ放ちました... 🎈';
-          if (els.exchangeDesc) els.exchangeDesc.textContent = '風に乗って、見知らぬ作者の街へ旅立っていきます';
+          if (els.exchangeDesc) els.exchangeDesc.textContent = '風に乗って、この曲をギフトした作者のもとへ旅立っていきます';
 
           setTimeout(() => {
             if (els.exchangeTitle) els.exchangeTitle.textContent = 'そして、どこかの空から新しい音楽の風船が舞い降りました 🎈';
@@ -2860,7 +2912,7 @@
           const remaining = Math.max(0, 2 - getDailyGiftCount());
           showGentleToast(
             '風船に乗った感想が作者へ届きました 🎈',
-            `「${curTitle}」の作者へ言葉が届き、返礼として空から次の音楽が舞い降りました。（本日の残りGIFT可能: ${remaining}/2回）`
+            `「${curTitle}」をギフトした作者へ言葉が届き、返礼として空から次の音楽が舞い降りました。（本日の残りGIFT可能: ${remaining}/2回）`
           );
         }, 5500);
       });
