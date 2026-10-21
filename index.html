@@ -292,6 +292,21 @@
               <div class="shelf-under-shadow"></div>
             </div>
           </div>
+
+          <!-- ページネーション（6枚以上ある場合のスワイプ操作＆ドット表示） -->
+          <div class="shelf-pagination-bar" id="shelfPaginationBar" style="display: none;">
+            <button class="shelf-nav-btn" id="btnShelfPrev" title="前の6枚" aria-label="前の6枚">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+              </svg>
+            </button>
+            <div class="shelf-dots" id="shelfDots"></div>
+            <button class="shelf-nav-btn" id="btnShelfNext" title="次の6枚" aria-label="次の6枚">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 

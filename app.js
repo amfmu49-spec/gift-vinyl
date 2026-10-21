@@ -124,6 +124,10 @@
     galleryCount: document.getElementById('galleryCount'),
     shelfRecordsGrid: document.getElementById('shelfRecordsGrid'),
     btnClearHistory: document.getElementById('btnClearHistory'),
+    shelfPaginationBar: document.getElementById('shelfPaginationBar'),
+    shelfDots: document.getElementById('shelfDots'),
+    btnShelfPrev: document.getElementById('btnShelfPrev'),
+    btnShelfNext: document.getElementById('btnShelfNext'),
     // GIFT SNS 関連
     btnOpenGiftModal: document.getElementById('btnOpenGiftModal'),
     giftModal: document.getElementById('giftModal'),
@@ -1204,42 +1208,88 @@
           <p class="empty-shelf-desc">右上の「GIFTする」ボタンから音楽を1曲空へ放つと、<br>世界の誰かから新しいレコードがあなたの棚へ届きます。</p>
         </div>
       `;
+      if (els.shelfPaginationBar) els.shelfPaginationBar.style.display = 'none';
       return;
     }
 
-    state.collection.forEach((item, index) => {
-      const card = document.createElement('div');
-      card.className = 'shelf-record-card';
-      const isNowPlaying = state.isPlaying && (els.trackTitle.textContent === item.title);
+    const pageSize = 6;
+    const totalPages = Math.ceil(state.collection.length / pageSize);
 
-      card.innerHTML = `
-        <div class="shelf-jacket-wrapper">
-          ${isNowPlaying ? '<div class="shelf-playing-badge"><span>●</span> PLAYING</div>' : ''}
-          <img src="${item.coverUrl || 'assets/default_cover.jpg'}" alt="${item.title}" class="shelf-jacket-img">
-          <div class="shelf-peeking-disc">
-            <div class="shelf-peeking-label">
-              <img src="${item.coverUrl || 'assets/default_cover.jpg'}" alt="Label">
+    for (let pageIdx = 0; pageIdx < totalPages; pageIdx++) {
+      const pageEl = document.createElement('div');
+      pageEl.className = 'shelf-page';
+      pageEl.dataset.page = pageIdx;
+
+      const pageItems = state.collection.slice(pageIdx * pageSize, (pageIdx + 1) * pageSize);
+      pageItems.forEach((item, itemIdxInPage) => {
+        const globalIndex = pageIdx * pageSize + itemIdxInPage;
+        const card = document.createElement('div');
+        card.className = 'shelf-record-card';
+        const isNowPlaying = state.isPlaying && (els.trackTitle.textContent === item.title);
+
+        card.innerHTML = `
+          <div class="shelf-jacket-wrapper">
+            ${isNowPlaying ? '<div class="shelf-playing-badge"><span>●</span> PLAYING</div>' : ''}
+            <img src="${item.coverUrl || 'assets/default_cover.jpg'}" alt="${item.title}" class="shelf-jacket-img">
+            <div class="shelf-peeking-disc">
+              <div class="shelf-peeking-label">
+                <img src="${item.coverUrl || 'assets/default_cover.jpg'}" alt="Label">
+              </div>
+            </div>
+            <div class="shelf-play-overlay">
+              <div class="shelf-play-btn">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                  <path d="M8 5v14l11-7z"/>
+                </svg>
+              </div>
             </div>
           </div>
-          <div class="shelf-play-overlay">
-            <div class="shelf-play-btn">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                <path d="M8 5v14l11-7z"/>
-              </svg>
-            </div>
+          <div class="shelf-card-meta">
+            <div class="shelf-card-title" title="${item.title}">${item.title}</div>
           </div>
-        </div>
-        <div class="shelf-card-meta">
-          <div class="shelf-card-title" title="${item.title}">${item.title}</div>
-          <div class="shelf-card-artist" title="${item.artist}">${item.artist}</div>
-        </div>
-      `;
+        `;
 
-      card.addEventListener('click', () => {
-        playCollectionItem(index);
+        card.addEventListener('click', () => {
+          playCollectionItem(globalIndex);
+        });
+
+        pageEl.appendChild(card);
       });
 
-      els.shelfRecordsGrid.appendChild(card);
+      els.shelfRecordsGrid.appendChild(pageEl);
+    }
+
+    updateShelfPagination(totalPages);
+  }
+
+  function updateShelfPagination(totalPages) {
+    if (!els.shelfPaginationBar || !els.shelfDots) return;
+
+    if (totalPages <= 1) {
+      els.shelfPaginationBar.style.display = 'none';
+      return;
+    }
+
+    els.shelfPaginationBar.style.display = 'flex';
+    els.shelfDots.innerHTML = '';
+
+    for (let i = 0; i < totalPages; i++) {
+      const dot = document.createElement('button');
+      dot.className = `shelf-dot ${i === 0 ? 'active' : ''}`;
+      dot.setAttribute('aria-label', `${i + 1}ページ目へ`);
+      dot.addEventListener('click', () => {
+        scrollToShelfPage(i);
+      });
+      els.shelfDots.appendChild(dot);
+    }
+  }
+
+  function scrollToShelfPage(pageIdx) {
+    if (!els.shelfRecordsGrid) return;
+    const pageWidth = els.shelfRecordsGrid.clientWidth;
+    els.shelfRecordsGrid.scrollTo({
+      left: pageIdx * pageWidth,
+      behavior: 'smooth'
     });
   }
 
@@ -1599,6 +1649,86 @@
         renderLyrics([]);
       });
     }
+    // 飾り棚のスワイプ＆ページネーション制御
+    initShelfSwipeControls();
+  }
+
+  function initShelfSwipeControls() {
+    if (!els.shelfRecordsGrid) return;
+
+    // スクロール時にアクティブなドットを更新
+    let scrollTimeout;
+    els.shelfRecordsGrid.addEventListener('scroll', () => {
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => {
+        if (!els.shelfDots) return;
+        const width = els.shelfRecordsGrid.clientWidth;
+        if (!width) return;
+        const curPage = Math.round(els.shelfRecordsGrid.scrollLeft / width);
+        const dots = els.shelfDots.querySelectorAll('.shelf-dot');
+        dots.forEach((d, idx) => {
+          d.classList.toggle('active', idx === curPage);
+        });
+      }, 40);
+    }, { passive: true });
+
+    // 前へ / 次へ ボタン
+    if (els.btnShelfPrev) {
+      els.btnShelfPrev.addEventListener('click', () => {
+        const width = els.shelfRecordsGrid.clientWidth;
+        const curPage = Math.round(els.shelfRecordsGrid.scrollLeft / width);
+        if (curPage > 0) {
+          scrollToShelfPage(curPage - 1);
+        }
+      });
+    }
+
+    if (els.btnShelfNext) {
+      els.btnShelfNext.addEventListener('click', () => {
+        const width = els.shelfRecordsGrid.clientWidth;
+        const curPage = Math.round(els.shelfRecordsGrid.scrollLeft / width);
+        const totalPages = Math.ceil(state.collection.length / 6);
+        if (curPage < totalPages - 1) {
+          scrollToShelfPage(curPage + 1);
+        }
+      });
+    }
+
+    // PCマウスでの横ドラッグ・スワイプ対応
+    let isDown = false;
+    let startX = 0;
+    let scrollLeft = 0;
+    let hasMoved = false;
+
+    els.shelfRecordsGrid.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      isDown = true;
+      hasMoved = false;
+      startX = e.pageX - els.shelfRecordsGrid.offsetLeft;
+      scrollLeft = els.shelfRecordsGrid.scrollLeft;
+      els.shelfRecordsGrid.style.scrollBehavior = 'auto';
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDown) return;
+      const x = e.pageX - els.shelfRecordsGrid.offsetLeft;
+      const walk = (x - startX);
+      if (Math.abs(walk) > 8) {
+        hasMoved = true;
+      }
+      els.shelfRecordsGrid.scrollLeft = scrollLeft - walk;
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (!isDown) return;
+      isDown = false;
+      els.shelfRecordsGrid.style.scrollBehavior = 'smooth';
+      if (hasMoved) {
+        const width = els.shelfRecordsGrid.clientWidth;
+        const targetPage = Math.round(els.shelfRecordsGrid.scrollLeft / width);
+        scrollToShelfPage(targetPage);
+      }
+    });
   }
 
   // ==========================================================================
